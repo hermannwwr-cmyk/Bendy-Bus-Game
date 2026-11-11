@@ -320,6 +320,7 @@
     level: null, levelKey: 'easy', stops: [], stopIndex: 0, stars: 0,
     onboard: [], people: [], signs: [], puffs: [], parts: [], pops: [], labels: [],
     puffTimer: 0, nextDest: 'Bus Interchange',
+    map: { a: 0, open: false, manual: false, pts: [], decor: null, timer: null },
   };
 
   // ---------- async flow helpers (with abort support) ----------
@@ -341,7 +342,7 @@
     title: $('title'), end: $('end'), hud: $('hud'), banner: $('banner'),
     question: $('question'), qText: $('qText'), choices: $('choices'),
     stars: $('stars'), starCount: $('starCount'),
-    btnSound: $('btnSound'), btnMusic: $('btnMusic'), btnHome: $('btnHome'),
+    btnSound: $('btnSound'), btnMusic: $('btnMusic'), btnHome: $('btnHome'), btnMap: $('btnMap'),
   };
   let bannerTimer = null;
   function banner(text, ms = 2500, cls = '') {
@@ -367,6 +368,10 @@
   ui.btnSound.addEventListener('click', () => { Sound.init(); Sound.setSfx(!Sound.sfxOn); refreshToggles(); if (Sound.sfxOn) Sound.pop(3); });
   ui.btnMusic.addEventListener('click', () => { Sound.init(); Sound.setMusic(!Sound.musicOn); refreshToggles(); });
   ui.btnHome.addEventListener('click', () => { Sound.pop(1); toTitle(); });
+  ui.btnMap.addEventListener('click', () => {
+    Sound.init();
+    if (game.map.open) hideMap(); else showMap(0);
+  });
   document.querySelectorAll('.level').forEach((b) => b.addEventListener('click', () => {
     Sound.init(); Sound.honk();
     startRoute(b.dataset.level);
@@ -374,6 +379,7 @@
   $('btnAgain').addEventListener('click', () => { Sound.init(); Sound.honk(); startRoute(game.levelKey); });
   $('btnLevels').addEventListener('click', () => { Sound.pop(2); toTitle(); });
   canvas.addEventListener('pointerdown', (e) => {
+    if (game.map.open) { hideMap(); return; }
     // Tap the bus on the title screen for a honk
     if (game.mode !== 'title') return;
     const r = canvas.getBoundingClientRect();
@@ -422,6 +428,7 @@
         });
         ui.choices.appendChild(b);
       });
+      hideMap();
       ui.question.classList.remove('hidden');
       void ui.question.offsetWidth;
       say(speakText || text, true);
@@ -517,6 +524,7 @@
     game.nextDest = stop.name;
     game.signs.push({ wx: POLE_X - game.distTarget, name: stop.name, icon: stop.icon });
     game.bellAt = stop.off > 0 ? game.distTarget - 1050 : null;
+    if (game.mode === 'play') showMap(3400);
     return guard(new Promise((res) => { game.arriveResolve = res; }));
   }
 
@@ -532,6 +540,8 @@
     game.stars = 0; updateStars(false);
     game.stops = makeRoute(game.level);
     game.stopIndex = 0;
+    layoutMap();
+    ui.btnMap.classList.remove('hidden');
     ui.title.classList.add('hidden');
     ui.end.classList.add('hidden');
     ui.hud.classList.remove('hidden');
@@ -708,8 +718,10 @@
       es.appendChild(s);
     }
     for (let i = 0; i < total; i++) setTimeout(() => Sound.pop(i + 1), 150 * i + 100);
+    hideMap();
     ui.end.classList.remove('hidden');
     ui.btnHome.classList.add('hidden');
+    ui.btnMap.classList.add('hidden');
   }
 
   function resetScene(keepCruise) {
@@ -735,6 +747,8 @@
     ui.end.classList.add('hidden');
     ui.hud.classList.add('hidden');
     ui.btnHome.classList.add('hidden');
+    ui.btnMap.classList.add('hidden');
+    hideMap();
   }
 
   // ====================================================================
@@ -821,6 +835,7 @@
     for (const p of game.pops) p.t += dt;
     game.pops = game.pops.filter((p) => p.t < 1.4);
     for (const l of game.labels) l.t += dt;
+    game.map.a = clamp(game.map.a + (game.map.open ? dt * 4 : -dt * 4), 0, 1);
   }
 
   // ====================================================================
@@ -1224,13 +1239,18 @@
   // ====================================================================
   // Draw: HUD route strip, labels, particles
   // ====================================================================
+  function routeProgress() {
+    let frac = 1;
+    if (game.distTarget != null) frac = clamp((game.dist - game.legStart) / (game.distTarget - game.legStart), 0, 1);
+    return game.stopIndex + frac;
+  }
+
   function drawRoute() {
     if (game.mode !== 'play' || !game.stops.length) return;
     const n = game.stops.length, x0 = 370, x1 = 910, y = 42;
     rr(x0 - 46, 18, x1 - x0 + 92, 48, 24, 'rgba(255,255,255,.9)');
-    let frac = 1;
-    if (game.distTarget != null) frac = clamp((game.dist - game.legStart) / (game.distTarget - game.legStart), 0, 1);
-    const prog = game.stopIndex + frac;
+    const prog = routeProgress();
+    const frac = prog - game.stopIndex;
     const px = (k) => x0 + (k * (x1 - x0)) / n;
     ctx.lineCap = 'round';
     ctx.strokeStyle = '#d7dde3'; ctx.lineWidth = 8; ctx.beginPath(); ctx.moveTo(x0, y); ctx.lineTo(x1, y); ctx.stroke();
@@ -1252,6 +1272,200 @@
     rr(bx - 17, by - 7, 34, 13, 4, GREEN);
     ctx.fillStyle = '#28343c'; ctx.fillRect(bx - 13, by - 5, 26, 5);
     circle(bx - 9, by + 7, 3.5, '#222'); circle(bx + 9, by + 7, 3.5, '#222');
+  }
+
+  // ====================================================================
+  // Route map (top-down cartoon map with the bus moving along the route)
+  // ====================================================================
+  const MAP = { x: 70, y: 88, w: 1140, h: 612 };
+  const MAP_TEMPLATE = [[170, 600], [320, 460], [500, 565], [640, 390], [820, 480], [965, 315], [1105, 455]];
+
+  function showMap(autoMs) {
+    const m = game.map;
+    clearTimeout(m.timer);
+    if (!m.open) Sound.noise(0.35, { freq: 1800, freqTo: 900, q: 0.7, vol: 0.06, attack: 0.03 });
+    m.open = true;
+    m.manual = !autoMs;
+    if (autoMs) m.timer = setTimeout(() => { if (!m.manual) hideMap(); }, autoMs);
+  }
+  function hideMap() {
+    const m = game.map;
+    clearTimeout(m.timer);
+    if (m.open) Sound.noise(0.3, { freq: 900, freqTo: 1800, q: 0.7, vol: 0.05, attack: 0.03 });
+    m.open = false; m.manual = false;
+  }
+
+  function segDist(px, py, ax, ay, bx, by) {
+    const dx = bx - ax, dy = by - ay;
+    const t = clamp(((px - ax) * dx + (py - ay) * dy) / (dx * dx + dy * dy), 0, 1);
+    return Math.hypot(px - (ax + dx * t), py - (ay + dy * t));
+  }
+
+  function layoutMap() {
+    const pts = MAP_TEMPLATE.map(([x, y], i) => ({ x: x + (i ? rand(-22, 22) : 0), y: y + (i ? rand(-22, 22) : 0) }));
+    const nearRoute = (x, y, d) => pts.some((p, i) => i < pts.length - 1 && segDist(x, y, p.x, p.y, pts[i + 1].x, pts[i + 1].y) < d);
+    const inSea = (x, y) => x > 990 && y > 560;
+    const decor = { trees: [], blocks: [] };
+    for (let tries = 0; decor.blocks.length < 9 && tries < 400; tries++) {
+      const x = rand(MAP.x + 40, MAP.x + MAP.w - 60), y = rand(MAP.y + 90, MAP.y + MAP.h - 50);
+      if (nearRoute(x, y, 70) || inSea(x, y) || decor.blocks.some((b) => Math.hypot(b.x - x, b.y - y) < 90)) continue;
+      decor.blocks.push({ x, y, c: HDB[Math.floor(Math.random() * HDB.length)] });
+    }
+    for (let tries = 0; decor.trees.length < 46 && tries < 900; tries++) {
+      const x = rand(MAP.x + 20, MAP.x + MAP.w - 20), y = rand(MAP.y + 70, MAP.y + MAP.h - 20);
+      if (nearRoute(x, y, 42) || inSea(x, y) || decor.blocks.some((b) => Math.abs(b.x - x) < 40 && Math.abs(b.y - y) < 40)) continue;
+      decor.trees.push({ x, y, r: rand(9, 15) });
+    }
+    game.map.pts = pts;
+    game.map.decor = decor;
+  }
+
+  function mapBusPos(prog) {
+    const pts = game.map.pts;
+    const i = clamp(Math.floor(prog), 0, pts.length - 2);
+    const f = clamp(prog - i, 0, 1);
+    const a = pts[i], b = pts[i + 1];
+    return { x: lerp(a.x, b.x, f), y: lerp(a.y, b.y, f), ang: Math.atan2(b.y - a.y, b.x - a.x) };
+  }
+
+  function drawMapBus(x, y, ang) {
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.rotate(ang);
+    const bob = game.v > 5 ? Math.sin(game.time * 16) * 0.8 : 0;
+    ctx.translate(0, bob);
+    ellipse(2, 5, 42, 15, 'rgba(0,0,0,.25)');
+    // rear section, joint, front section (front points along the route)
+    rr(-40, -13, 37, 26, 6, GREEN);
+    rr(-3, -10, 7, 20, 2, '#2a2a2a');
+    rr(4, -13, 38, 26, [6, 11, 11, 6], GREEN);
+    ctx.fillStyle = '#f7faf5';
+    ctx.fillRect(-36, -7, 29, 14); ctx.fillRect(8, -7, 24, 14);
+    ctx.fillStyle = '#28343c'; rr(33, -10, 6, 20, 3, '#28343c');
+    ctx.fillStyle = '#ffb000'; ctx.font = `800 10px ${FONT}`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText(ROUTE_NO, 20, 0.5);
+    ctx.textBaseline = 'alphabetic';
+    ctx.restore();
+  }
+
+  function drawMap() {
+    const m = game.map;
+    if (m.a <= 0.001 || !m.pts.length) return;
+    const a = m.a, e = easeOutBack(a);
+    ctx.save();
+    ctx.globalAlpha = a;
+    ctx.fillStyle = 'rgba(20,40,60,.45)'; ctx.fillRect(0, 0, W, H);
+    ctx.translate(W / 2, H / 2 + 20);
+    ctx.scale(0.85 + 0.15 * e, 0.85 + 0.15 * e);
+    ctx.translate(-W / 2, -H / 2 - 20);
+
+    // paper card + land
+    rr(MAP.x - 10, MAP.y - 10, MAP.w + 20, MAP.h + 20, 30, '#fff7e0');
+    ctx.save();
+    rrPath(MAP.x, MAP.y, MAP.w, MAP.h, 24); ctx.clip();
+    ctx.fillStyle = '#c8e8a4'; ctx.fillRect(MAP.x, MAP.y, MAP.w, MAP.h);
+    // faint street grid
+    ctx.strokeStyle = 'rgba(255,255,255,.55)'; ctx.lineWidth = 6;
+    ctx.beginPath();
+    for (let x = MAP.x + 60; x < MAP.x + MAP.w; x += 150) { ctx.moveTo(x, MAP.y); ctx.lineTo(x - 40, MAP.y + MAP.h); }
+    for (let y = MAP.y + 120; y < MAP.y + MAP.h; y += 130) { ctx.moveTo(MAP.x, y); ctx.lineTo(MAP.x + MAP.w, y + 30); }
+    ctx.stroke();
+    // river
+    ctx.strokeStyle = '#7cc8f0'; ctx.lineWidth = 30; ctx.lineCap = 'round';
+    ctx.beginPath(); ctx.moveTo(MAP.x + 380, MAP.y - 20);
+    ctx.bezierCurveTo(MAP.x + 300, MAP.y + 200, MAP.x + 560, MAP.y + 300, MAP.x + 470, MAP.y + MAP.h + 20); ctx.stroke();
+    ctx.strokeStyle = '#a9dcf7'; ctx.lineWidth = 10; ctx.stroke();
+    // sea with waves
+    ctx.fillStyle = '#5bb8ec';
+    ctx.beginPath(); ctx.moveTo(MAP.x + MAP.w, MAP.y + 470);
+    ctx.bezierCurveTo(MAP.x + 1040, MAP.y + 480, MAP.x + 960, MAP.y + 540, MAP.x + 900, MAP.y + MAP.h);
+    ctx.lineTo(MAP.x + MAP.w, MAP.y + MAP.h); ctx.closePath(); ctx.fill();
+    ctx.strokeStyle = 'rgba(255,255,255,.7)'; ctx.lineWidth = 3;
+    for (let k = 0; k < 4; k++) {
+      const wx = MAP.x + 1010 + k * 30 + Math.sin(game.time * 2 + k) * 6, wy = MAP.y + 540 + k * 16;
+      ctx.beginPath(); ctx.arc(wx, wy, 8, Math.PI * 1.1, Math.PI * 1.9); ctx.stroke();
+    }
+    ctx.font = `30px ${EMOJI}`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText('⛵', MAP.x + 1090 + Math.sin(game.time) * 8, MAP.y + 575);
+    // HDB blocks (little rooftops) and trees
+    for (const b of m.decor.blocks) {
+      rr(b.x - 26, b.y - 18, 56, 40, 5, 'rgba(0,0,0,.15)');
+      rr(b.x - 30, b.y - 22, 56, 40, 5, b.c[0]);
+      ctx.fillStyle = b.c[1]; ctx.fillRect(b.x - 30, b.y - 22, 56, 7);
+      ctx.fillStyle = 'rgba(55,85,120,.35)';
+      for (let r = 0; r < 3; r++) for (let c = 0; c < 4; c++) ctx.fillRect(b.x - 24 + c * 12, b.y - 10 + r * 9, 7, 5);
+    }
+    for (const t of m.decor.trees) { circle(t.x + 2, t.y + 3, t.r, 'rgba(0,0,0,.12)'); circle(t.x, t.y, t.r, '#4caf50'); circle(t.x - t.r * 0.3, t.y - t.r * 0.3, t.r * 0.45, '#6cc56c'); }
+    ctx.restore();
+    ctx.strokeStyle = '#e3c27a'; ctx.lineWidth = 5; rrPath(MAP.x, MAP.y, MAP.w, MAP.h, 24); ctx.stroke();
+
+    // the bus route road
+    const pts = m.pts;
+    const prog = routeProgress();
+    const path = (upto) => {
+      ctx.beginPath(); ctx.moveTo(pts[0].x, pts[0].y);
+      const n = Math.floor(upto);
+      for (let i = 1; i <= Math.min(n, pts.length - 1); i++) ctx.lineTo(pts[i].x, pts[i].y);
+      if (upto < pts.length - 1) { const p = mapBusPos(upto); ctx.lineTo(p.x, p.y); }
+    };
+    ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+    path(pts.length - 1); ctx.strokeStyle = '#7d848c'; ctx.lineWidth = 26; ctx.stroke();
+    ctx.strokeStyle = '#9aa1a8'; ctx.lineWidth = 20; ctx.stroke();
+    ctx.setLineDash([14, 14]); ctx.lineDashOffset = -game.time * 30;
+    ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 3; ctx.stroke();
+    ctx.setLineDash([]);
+    path(prog); ctx.strokeStyle = 'rgba(53,196,106,.85)'; ctx.lineWidth = 12; ctx.stroke();
+
+    // start flag
+    const s0 = pts[0];
+    circle(s0.x, s0.y, 20, '#fff'); circle(s0.x, s0.y, 16, '#35c46a');
+    ctx.font = `20px ${EMOJI}`; ctx.fillText('🏁', s0.x, s0.y + 1);
+    mapLabel('Start', s0.x, s0.y + 36, false);
+
+    // stops
+    game.stops.forEach((st, k) => {
+      const p = pts[k + 1];
+      const done = k < Math.floor(prog) || (k === game.stopIndex && prog - k >= 1);
+      const cur = k === game.stopIndex && !done;
+      const r = (st.terminus ? 30 : 25) + (cur ? Math.sin(game.time * 5) * 2.5 : 0);
+      if (cur) { ctx.globalAlpha = a * (0.35 + 0.25 * Math.sin(game.time * 5)); circle(p.x, p.y, r + 16, '#ffcf3f'); ctx.globalAlpha = a; }
+      circle(p.x + 2, p.y + 4, r + 4, 'rgba(0,0,0,.18)');
+      circle(p.x, p.y, r + 4, done ? '#35c46a' : cur ? '#ffcf3f' : '#1e5aa8');
+      circle(p.x, p.y, r, '#fff');
+      ctx.font = `${Math.round(r * 1.05)}px ${EMOJI}`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillText(st.icon, p.x, p.y + 1);
+      if (done) { circle(p.x + r * 0.8, p.y - r * 0.8, 11, '#35c46a'); ctx.fillStyle = '#fff'; ctx.font = `800 15px ${FONT}`; ctx.fillText('✓', p.x + r * 0.8, p.y - r * 0.8 + 1); }
+      mapLabel(st.name, p.x, p.y + r + 20, cur);
+    });
+
+    // the bus itself, with a "you are here" ring
+    const bp = mapBusPos(prog);
+    ctx.globalAlpha = a * (0.5 - 0.5 * ((game.time * 1.2) % 1));
+    ctx.strokeStyle = '#ff5252'; ctx.lineWidth = 4;
+    ctx.beginPath(); ctx.arc(bp.x, bp.y, 20 + ((game.time * 1.2) % 1) * 40, 0, 7); ctx.stroke();
+    ctx.globalAlpha = a;
+    drawMapBus(bp.x, bp.y - 16, bp.ang);
+
+    // title
+    const tx = MAP.x + MAP.w - 350, ty = MAP.y + MAP.h - 66;
+    rr(tx, ty, 330, 50, 25, 'rgba(255,255,255,.92)');
+    ctx.fillStyle = '#24405a'; ctx.font = `800 26px ${FONT}`; ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
+    ctx.fillText(`🗺️ Bus ${ROUTE_NO} route map`, tx + 20, ty + 26);
+    if (m.manual) {
+      rr(tx + 60, ty - 36, 210, 28, 14, 'rgba(255,255,255,.85)');
+      ctx.textAlign = 'center'; ctx.font = `700 17px ${FONT}`; ctx.fillStyle = '#24405a';
+      ctx.fillText('Tap anywhere to close', tx + 165, ty - 21);
+    }
+    ctx.textBaseline = 'alphabetic';
+    ctx.restore();
+  }
+
+  function mapLabel(text, x, y, highlight) {
+    ctx.font = `800 17px ${FONT}`;
+    const w = ctx.measureText(text).width + 22;
+    rr(x - w / 2, y - 14, w, 28, 14, highlight ? '#ffcf3f' : 'rgba(255,255,255,.95)');
+    ctx.fillStyle = '#24405a'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText(text, x, y + 1);
   }
 
   function drawFX() {
@@ -1310,6 +1524,7 @@
     for (const s of game.signs) drawSign(s);
     [...game.people].sort((a, b) => a.y - b.y).forEach(drawPerson);
     drawOverlays();
+    drawMap();
     drawRoute();
   }
 

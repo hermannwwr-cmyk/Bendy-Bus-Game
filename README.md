@@ -18,6 +18,14 @@ A counting game for kids around 6 years old. A green Singapore‑style **bendy b
 5. A wrong answer is never a dead end. The game says "Let's count together!", puts a number on each passenger one at a time, and lets the child try again.
 6. A right answer earns a star ⭐, confetti and a simple number sentence like `3 − 1 + 2 = 5`, which introduces adding and taking away.
 
+### 🗺️ Route map
+
+A cartoon top‑down map shows the whole bus route: the start flag, every bus stop with its picture and name, HDB blocks, trees, a river and the sea. The bus moves along the road on the map in real time. Stops already visited get a green tick, and the next stop glows yellow.
+
+- The map opens on its own for a few seconds each time the bus leaves for the next stop, so the child can see where the bus is going.
+- Tap the 🗺️ button to open the map at any time. Tap anywhere to close it.
+- The map closes by itself when a counting question appears.
+
 The first stop starts with an easier warm‑up question: *"How many people are waiting at the bus stop?"* At the last stop everyone gets off and waves, and the question is *"How many people got off?"*
 
 ## Sound and animation
