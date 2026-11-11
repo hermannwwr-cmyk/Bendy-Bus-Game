@@ -83,7 +83,13 @@
       if (this.ac) { if (this.ac.state === 'suspended') this.ac.resume(); return; }
       const AC = window.AudioContext || window.webkitAudioContext;
       if (!AC) return;
+      // iPhone/iPad: play sound even when the silent switch is on
+      try { if (navigator.audioSession) navigator.audioSession.type = 'playback'; } catch (e) { /* ignore */ }
+      this.unlockMediaElement();
       const ac = this.ac = new AC();
+      // Some browsers only start audio after a buffer is played inside a tap
+      try { const sb = ac.createBufferSource(); sb.buffer = ac.createBuffer(1, 1, 22050); sb.connect(ac.destination); sb.start(0); } catch (e) { /* ignore */ }
+      if (ac.state === 'suspended') ac.resume();
       this.master = ac.createGain(); this.master.gain.value = 0.9; this.master.connect(ac.destination);
       this.sfx = ac.createGain(); this.sfx.gain.value = this.sfxOn ? 1 : 0; this.sfx.connect(this.master);
       this.mus = ac.createGain(); this.mus.gain.value = this.musicOn ? 0.55 : 0; this.mus.connect(this.master);
@@ -94,6 +100,23 @@
       this.noiseBuf = buf;
       this.makeEngine();
       Music.start();
+    },
+    // Older iOS: a looping silent <audio> element switches the page to "playback"
+    // audio, so Web Audio is heard even with the ringer switch on silent.
+    unlockMediaElement() {
+      if (this.silentEl) return;
+      try {
+        const n = 4410, buf = new ArrayBuffer(44 + n * 2), v = new DataView(buf);
+        const w = (o, str) => { for (let i = 0; i < str.length; i++) v.setUint8(o + i, str.charCodeAt(i)); };
+        w(0, 'RIFF'); v.setUint32(4, 36 + n * 2, true); w(8, 'WAVE'); w(12, 'fmt ');
+        v.setUint32(16, 16, true); v.setUint16(20, 1, true); v.setUint16(22, 1, true);
+        v.setUint32(24, 44100, true); v.setUint32(28, 88200, true); v.setUint16(32, 2, true); v.setUint16(34, 16, true);
+        w(36, 'data'); v.setUint32(40, n * 2, true);
+        const el = new Audio(URL.createObjectURL(new Blob([buf], { type: 'audio/wav' })));
+        el.loop = true; el.setAttribute('playsinline', '');
+        const pr = el.play(); if (pr && pr.catch) pr.catch(() => {});
+        this.silentEl = el;
+      } catch (e) { /* ignore */ }
     },
     setSfx(on) { this.sfxOn = on; store.set('sound', on); if (this.sfx) this.sfx.gain.setTargetAtTime(on ? 1 : 0, this.ac.currentTime, 0.05); if (!on) Voice.stop(); },
     setMusic(on) { this.musicOn = on; store.set('music', on); if (this.mus) this.mus.gain.setTargetAtTime(on ? 0.55 : 0, this.ac.currentTime, 0.1); },
@@ -260,6 +283,8 @@
   };
   if (Voice.ok) { Voice.pick(); speechSynthesis.onvoiceschanged = () => Voice.pick(); }
   const say = (t, i) => Voice.say(t, i);
+
+  ['pointerdown', 'touchend', 'keydown'].forEach((t) => document.addEventListener(t, () => Sound.init(), { passive: true }));
 
   document.addEventListener('visibilitychange', () => {
     if (!Sound.ac) return;
@@ -2108,5 +2133,5 @@
   for (let i = 0; i < 4; i++) game.onboard.push({ look: makeLook(), slot: [3, 6, 10, 15][i], appear: 1, leaving: false });
 
   // test/debug hook
-  window.__bendyBus = { game, startRoute, toTitle };
+  window.__bendyBus = { game, startRoute, toTitle, Sound };
 })();

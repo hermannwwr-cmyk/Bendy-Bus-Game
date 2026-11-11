@@ -116,6 +116,8 @@ button { font-family: inherit; cursor: pointer; border: none; color: inherit; }
 .lv-easy { background: #35c46a; }
 .lv-medium { background: #4d96ff; }
 .lv-big { background: #ff6b6b; }
+.lv-play { background: #35c46a; width: calc(var(--u) * 20); }
+.lv-play .em { font-size: calc(var(--u) * 3.2); }
 
 /* ---------- End ---------- */
 #end { justify-content: center; background: rgba(20, 40, 60, .35); animation: fadeIn .4s; }
