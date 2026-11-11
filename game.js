@@ -148,6 +148,26 @@
       const d = [0, 0.15, 0.3, 0.45, 0.75, 1.0, 1.15, 1.35];
       n.forEach((f, i) => { this.tone(f, i === 7 ? 0.9 : 0.25, { type: 'triangle', vol: 0.22, when: d[i] }); this.tone(f / 2, 0.25, { type: 'sine', vol: 0.12, when: d[i] }); });
     },
+    // A little sound that matches each place when the bus arrives
+    ambient(key) {
+      if (!this.ac) return;
+      const chirps = (n, base) => { for (let i = 0; i < n; i++) { const f = base + Math.random() * 1400; this.tone(f, 0.09, { vol: 0.07, slide: f * 1.5, when: i * 0.16 + Math.random() * 0.05 }); } };
+      switch (key) {
+        case 'birdpark': chirps(10, 2200); break;
+        case 'gardens': chirps(5, 2600); break;
+        case 'zoo': this.tone(260, 0.8, { type: 'sawtooth', vol: 0.05, slide: 620, attack: 0.08 }); chirps(3, 2400); break;
+        case 'beach': this.noise(2.6, { freq: 500, q: 0.4, vol: 0.12, attack: 1.1 }); break;
+        case 'mrt': this.noise(2.2, { freq: 260, freqTo: 140, q: 0.7, vol: 0.12, attack: 0.6 }); [0, 0.35].forEach((w, i) => this.tone(i ? 659 : 784, 0.3, { vol: 0.07, when: 1.4 + w })); break;
+        case 'airport': this.noise(3, { freq: 700, freqTo: 3200, q: 0.6, vol: 0.09, attack: 1.2 }); break;
+        case 'school': for (let i = 0; i < 4; i++) this.tone(1320, 0.35, { vol: 0.08, when: i * 0.3 }); break;
+        case 'stadium': this.noise(2, { freq: 1300, q: 0.4, vol: 0.12, attack: 0.3 }); break;
+        case 'pool': this.noise(0.6, { freq: 2600, freqTo: 900, q: 0.5, vol: 0.14 }); break;
+        case 'playground': [0, 0.18, 0.36].forEach((w, i) => this.tone(880 + i * 220, 0.18, { type: 'triangle', vol: 0.08, when: w })); break;
+        case 'hawker': case 'kopitiam': case 'wetmarket': this.noise(1.6, { freq: 900, q: 0.8, vol: 0.05, attack: 0.4 }); this.tone(1760, 0.08, { vol: 0.05, when: 0.6 }); this.tone(1760, 0.08, { vol: 0.05, when: 0.75 }); break;
+        case 'interchange': this.honk(); break;
+        default: break;
+      }
+    },
     makeEngine() {
       const ac = this.ac;
       const o1 = ac.createOscillator(); o1.type = 'sawtooth'; o1.frequency.value = 42;
@@ -270,10 +290,15 @@
     big: { cap: 15, maxOn: 5, maxOff: 4, name: 'Big Kid' },
   };
   const PLACES = [
-    ['Hawker Centre', '🍜'], ['Playground', '🛝'], ['Library', '📚'], ['MRT Station', '🚇'],
-    ['Wet Market', '🐟'], ['Botanic Gardens', '🌺'], ['Zoo', '🦒'], ['Bird Park', '🦜'],
-    ['Science Centre', '🔬'], ['Beach', '🏖️'], ['Swimming Pool', '🏊'], ['School', '🏫'],
-    ['Hospital', '🏥'], ['Kopitiam', '☕'], ['Airport', '✈️'], ['Stadium', '⚽'],
+    // [name, icon, landmark key, sign colour]
+    ['Hawker Centre', '🍜', 'hawker', '#c0392b'], ['Playground', '🛝', 'playground', '#ef6c00'],
+    ['Library', '📚', 'library', '#1e88e5'], ['MRT Station', '🚇', 'mrt', '#d32f2f'],
+    ['Wet Market', '🐟', 'wetmarket', '#00897b'], ['Botanic Gardens', '🌺', 'gardens', '#2e7d32'],
+    ['Zoo', '🦒', 'zoo', '#8d6e63'], ['Bird Park', '🦜', 'birdpark', '#00acc1'],
+    ['Science Centre', '🔬', 'science', '#5e35b1'], ['Beach', '🏖️', 'beach', '#0288d1'],
+    ['Swimming Pool', '🏊', 'pool', '#039be5'], ['School', '🏫', 'school', '#e53935'],
+    ['Hospital', '🏥', 'hospital', '#1565c0'], ['Kopitiam', '☕', 'kopitiam', '#6d4c41'],
+    ['Airport', '✈️', 'airport', '#455a64'], ['Stadium', '⚽', 'stadium', '#c2185b'],
   ];
   const PRAISE = ['Well done!', 'Great counting!', 'Shiok! You got it!', 'Wah, so clever!', 'Steady lah!', 'Super duper!', 'You are a counting champion!', 'Fantastic!'];
 
@@ -502,7 +527,7 @@
     const places = shuffle(PLACES.slice()).slice(0, 5);
     const stops = [];
     let onboard = 0;
-    places.forEach(([name, icon], i) => {
+    places.forEach(([name, icon, key, color], i) => {
       let off = 0, on;
       if (i > 0) off = randi(onboard > 0 ? 1 : 0, Math.min(level.maxOff, onboard));
       if (i > 0 && Math.random() < 0.25) off = randi(0, Math.min(level.maxOff, onboard));
@@ -510,10 +535,10 @@
       on = randi(i === 0 ? Math.min(2, room) : 0, Math.min(level.maxOn, room));
       if (off + on === 0) { if (room > 0) on = 1; else off = 1; }
       if (i === 4 && onboard - off + on === 0) on = 1;
-      stops.push({ name, icon, off, on, terminus: false });
+      stops.push({ name, icon, key, color, off, on, terminus: false });
       onboard = onboard - off + on;
     });
-    stops.push({ name: 'Bus Interchange', icon: '🚌', off: onboard, on: 0, terminus: true });
+    stops.push({ name: 'Bus Interchange', icon: '🚌', key: 'interchange', color: '#1e5aa8', off: onboard, on: 0, terminus: true });
     return stops;
   }
 
@@ -522,7 +547,7 @@
     game.distTarget = game.dist + LEG;
     game.cruise = 0;
     game.nextDest = stop.name;
-    game.signs.push({ wx: POLE_X - game.distTarget, name: stop.name, icon: stop.icon });
+    game.signs.push({ wx: POLE_X - game.distTarget, name: stop.name, icon: stop.icon, key: stop.key, color: stop.color });
     game.bellAt = stop.off > 0 ? game.distTarget - 1050 : null;
     if (game.mode === 'play') showMap(3400);
     return guard(new Promise((res) => { game.arriveResolve = res; }));
@@ -576,6 +601,7 @@
     say(`Next stop, ${stop.name}!`);
     await arrive;
     Sound.hiss();
+    setTimeout(() => Sound.ambient(stop.key), 500);
     await sleep(700);
 
     // Warm-up question at the first stop: count the people waiting
@@ -948,8 +974,8 @@
     ellipse(x, 704, 18, 5, 'rgba(0,0,0,.18)');
     ctx.fillStyle = '#8a939c'; ctx.fillRect(x - 4, 520, 8, 184);
     rr(x - 74, 444, 148, 86, 12, '#ffffff');
-    ctx.strokeStyle = '#1e5aa8'; ctx.lineWidth = 4; rrPath(x - 74, 444, 148, 86, 12); ctx.stroke();
-    rr(x - 74, 444, 148, 24, [12, 12, 0, 0], '#1e5aa8');
+    ctx.strokeStyle = sg.color; ctx.lineWidth = 4; rrPath(x - 74, 444, 148, 86, 12); ctx.stroke();
+    rr(x - 74, 444, 148, 24, [12, 12, 0, 0], sg.color);
     ctx.fillStyle = '#fff'; ctx.font = `800 15px ${FONT}`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
     ctx.fillText('BUS STOP', x, 457);
     ctx.font = `30px ${EMOJI}`; ctx.fillText(sg.icon, x - 46, 500);
@@ -1275,6 +1301,542 @@
   }
 
   // ====================================================================
+  // Landmarks: every bus stop has its own place next to the road.
+  // Drawn with the origin at the landmark centre on the far kerb (y = 444),
+  // so negative y goes up. The bus hides roughly y > -76 in the middle.
+  // ====================================================================
+  function txt(s, x, y, size, color, align = 'center', weight = 800) {
+    ctx.font = `${weight} ${size}px ${FONT}`; ctx.fillStyle = color; ctx.textAlign = align; ctx.textBaseline = 'middle';
+    ctx.fillText(s, x, y); ctx.textBaseline = 'alphabetic';
+  }
+  function pill(s, x, y, size, fg, bg, border) {
+    ctx.font = `800 ${size}px ${FONT}`;
+    const w = ctx.measureText(s).width + size * 1.3, h = size * 1.55;
+    rr(x - w / 2, y - h / 2 + 3, w, h, h / 2, 'rgba(0,0,0,.18)');
+    rr(x - w / 2, y - h / 2, w, h, h / 2, bg);
+    if (border) { ctx.strokeStyle = border; ctx.lineWidth = 3; rrPath(x - w / 2, y - h / 2, w, h, h / 2); ctx.stroke(); }
+    txt(s, x, y + 1, size, fg);
+  }
+  function poly(pts, fill) {
+    ctx.beginPath(); pts.forEach(([x, y], i) => (i ? ctx.lineTo(x, y) : ctx.moveTo(x, y))); ctx.closePath();
+    ctx.fillStyle = fill; ctx.fill();
+  }
+  function seg(x1, y1, x2, y2, color, w) {
+    ctx.strokeStyle = color; ctx.lineWidth = w; ctx.lineCap = 'round';
+    ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke();
+  }
+  function bigTree(x, s, c1 = '#3f9b3a', c2 = '#5cbc50') {
+    ctx.fillStyle = '#7b5233'; ctx.fillRect(x - 8 * s, -120 * s, 16 * s, 120 * s);
+    [[-50, -150, 46], [0, -185, 52], [50, -150, 46], [-25, -120, 40], [28, -118, 40]].forEach(([dx, dy, r]) => circle(x + dx * s, dy * s, r * s, c1));
+    [[-30, -175, 26], [18, -205, 28], [48, -165, 20]].forEach(([dx, dy, r]) => circle(x + dx * s, dy * s, r * s, c2));
+  }
+  function palm(x, s, t, lean = 1) {
+    const sway = Math.sin(t * 1.3 + x) * 4;
+    const tx = x + 40 * s * lean + sway, ty = -260 * s;
+    ctx.strokeStyle = '#a1887f'; ctx.lineWidth = 14 * s; ctx.lineCap = 'round';
+    ctx.beginPath(); ctx.moveTo(x, 0); ctx.quadraticCurveTo(x + 5 * lean, -150 * s, tx, ty); ctx.stroke();
+    ctx.strokeStyle = '#43a047'; ctx.lineWidth = 9 * s;
+    for (let k = 0; k < 6; k++) {
+      const a = -Math.PI + (k / 5) * Math.PI + Math.sin(t * 1.6 + k) * 0.06;
+      ctx.beginPath(); ctx.moveTo(tx, ty);
+      ctx.quadraticCurveTo(tx + Math.cos(a) * 55 * s, ty + Math.sin(a) * 45 * s - 10, tx + Math.cos(a) * 90 * s, ty + Math.sin(a) * 30 * s + 35 * s);
+      ctx.stroke();
+    }
+    circle(tx - 6, ty + 8, 6 * s, '#6d4c41'); circle(tx + 6, ty + 9, 6 * s, '#6d4c41');
+  }
+  function flyingBird(x, y, s, t, color) {
+    const f = Math.sin(t * 14) * 8 * s;
+    ctx.strokeStyle = color; ctx.lineWidth = 4 * s; ctx.lineCap = 'round';
+    ctx.beginPath(); ctx.moveTo(x - 14 * s, y - f); ctx.quadraticCurveTo(x - 6 * s, y - 4 * s, x, y); ctx.quadraticCurveTo(x + 6 * s, y - 4 * s, x + 14 * s, y - f); ctx.stroke();
+  }
+
+  const LANDMARKS = {
+    hawker(t) {
+      ctx.fillStyle = '#f3e3c3'; ctx.fillRect(-390, -215, 780, 215);
+      const stalls = [['Chicken Rice', '#e53935'], ['Laksa', '#fb8c00'], ['Satay', '#8e24aa'], ['Prata', '#1e88e5'], ['Rojak', '#43a047']];
+      stalls.forEach(([n, c], i) => {
+        const x = -375 + i * 150;
+        ctx.fillStyle = '#fff'; ctx.fillRect(x, -190, 140, 130);
+        ctx.fillStyle = c; ctx.fillRect(x, -190, 140, 28);
+        txt(n, x + 70, -175, 16, '#fff');
+        ctx.fillStyle = '#b0bec5'; ctx.fillRect(x, -105, 140, 45);
+        circle(x + 35, -118, 13, '#78909c'); circle(x + 105, -118, 13, '#78909c');
+        for (let k = 0; k < 3; k++) {
+          const ph = (t * 0.6 + i * 0.37 + k / 3) % 1;
+          ctx.globalAlpha = (1 - ph) * 0.6;
+          circle(x + 35 + k * 35 + Math.sin(ph * 6 + k) * 6, -130 - ph * 70, 7 + ph * 10, '#ffffff');
+        }
+        ctx.globalAlpha = 1;
+      });
+      for (const x of [-380, -230, -80, 70, 220, 370]) { ctx.fillStyle = '#d7bf98'; ctx.fillRect(x - 6, -222, 12, 222); }
+      poly([[-440, -215], [440, -215], [370, -300], [-370, -300]], '#c0392b');
+      ctx.strokeStyle = '#e57368'; ctx.lineWidth = 3;
+      ctx.beginPath(); for (let x = -420; x <= 420; x += 30) { ctx.moveTo(x, -216); ctx.lineTo(x * 0.84, -299); } ctx.stroke();
+      pill('HAWKER CENTRE', 0, -268, 26, '#fff', '#8e1b10');
+      for (let i = 0; i < 4; i++) {
+        const x = -230 + i * 150, a = Math.sin(t * 2 + i) * 0.18;
+        const ex = x + Math.sin(a) * 26, ey = -215 + Math.cos(a) * 26;
+        seg(x, -215, ex, ey, '#5d4037', 2);
+        ellipse(ex, ey + 12, 11, 14, '#e53935');
+        ctx.fillStyle = '#ffd54f'; ctx.fillRect(ex - 11, ey + 1, 22, 3); ctx.fillRect(ex - 11, ey + 21, 22, 3);
+      }
+    },
+
+    playground(t) {
+      ctx.fillStyle = '#26a69a'; ctx.fillRect(-470, -18, 940, 18);
+      // tower + roof
+      ctx.fillStyle = '#1e88e5'; ctx.fillRect(-262, -265, 14, 265); ctx.fillRect(-150, -265, 14, 265);
+      rr(-272, -175, 146, 16, 4, '#fdd835');
+      poly([[-285, -262], [-113, -262], [-199, -340]], '#e53935');
+      for (let y = -150; y < 0; y += 22) seg(-262, y, -250, y, '#fdd835', 5);
+      // slide
+      ctx.lineCap = 'round';
+      ctx.strokeStyle = '#2e7d32'; ctx.lineWidth = 26;
+      ctx.beginPath(); ctx.moveTo(-132, -168); ctx.bezierCurveTo(-30, -160, -20, -40, 90, -60); ctx.stroke();
+      ctx.strokeStyle = '#66bb6a'; ctx.lineWidth = 16; ctx.stroke();
+      // a child whooshing down the slide
+      const st = (t * 0.35) % 1;
+      const bx = (u) => Math.pow(1 - u, 3) * -132 + 3 * Math.pow(1 - u, 2) * u * -30 + 3 * (1 - u) * u * u * -20 + u * u * u * 90;
+      const by = (u) => Math.pow(1 - u, 3) * -168 + 3 * Math.pow(1 - u, 2) * u * -160 + 3 * (1 - u) * u * u * -40 + u * u * u * -60;
+      circle(bx(st), by(st) - 20, 11, '#eec09a'); ctx.fillStyle = '#ff70a6'; rr(bx(st) - 9, by(st) - 10, 18, 14, 5, '#ff70a6');
+      // swings
+      seg(190, 0, 225, -255, '#8e24aa', 10); seg(260, 0, 225, -255, '#8e24aa', 10);
+      seg(400, 0, 435, -255, '#8e24aa', 10); seg(470, 0, 435, -255, '#8e24aa', 10);
+      seg(225, -255, 435, -255, '#8e24aa', 12);
+      [[285, 0], [375, 1.4]].forEach(([px, ph]) => {
+        const a = Math.sin(t * 2.3 + ph) * 0.55, L = 140;
+        const ex = px + Math.sin(a) * L, ey = -255 + Math.cos(a) * L;
+        seg(px, -255, ex - 10, ey, '#555', 2); seg(px, -255, ex + 10, ey, '#555', 2);
+        rr(ex - 16, ey - 3, 32, 7, 3, '#ffb300');
+        if (ph === 0) { circle(ex, ey - 26, 11, '#c98d64'); rr(ex - 9, ey - 16, 18, 15, 5, '#4d96ff'); }
+      });
+      // see-saw
+      const sa = Math.sin(t * 1.6) * 0.25;
+      ctx.save(); ctx.translate(-410, -40); ctx.rotate(sa); rr(-95, -6, 190, 12, 5, '#ff7043'); circle(-85, -16, 9, '#ffd93d'); circle(85, -16, 9, '#ffd93d'); ctx.restore();
+      poly([[-425, 0], [-395, 0], [-410, -40]], '#6d4c41');
+      pill('PLAYGROUND', -10, -300, 24, '#fff', '#ef6c00');
+    },
+
+    library(t) {
+      rr(-330, -300, 660, 300, 10, '#eceff1');
+      const cols = ['#e53935', '#fb8c00', '#fdd835', '#43a047', '#1e88e5', '#8e24aa', '#00acc1', '#ff70a6'];
+      for (let i = 0; i < 22; i++) {
+        const x = -312 + i * 28.5, h = 150 + hash(i + 2) * 70;
+        ctx.fillStyle = cols[i % cols.length]; ctx.fillRect(x, -40 - h, 23, h);
+        ctx.fillStyle = 'rgba(255,255,255,.55)'; ctx.fillRect(x, -40 - h + 18, 23, 4); ctx.fillRect(x, -60, 23, 4);
+      }
+      rr(-150, -292, 300, 42, 21, '#1e88e5');
+      txt('LIBRARY', 0, -270, 28, '#fff');
+      // open book on the roof, pages gently fluttering
+      const f = Math.sin(t * 2) * 6;
+      poly([[0, -300], [-150, -330 - f], [-150, -385 - f], [0, -360]], '#ffffff');
+      poly([[0, -300], [150, -330 + f], [150, -385 + f], [0, -360]], '#fafafa');
+      ctx.strokeStyle = '#1565c0'; ctx.lineWidth = 6;
+      ctx.beginPath(); ctx.moveTo(-150, -330 - f); ctx.lineTo(0, -300); ctx.lineTo(150, -330 + f); ctx.stroke();
+      ctx.strokeStyle = '#b0bec5'; ctx.lineWidth = 2; ctx.beginPath();
+      for (let k = 1; k < 5; k++) { ctx.moveTo(-130, -340 - f - k * 8 + k); ctx.lineTo(-20, -318 - k * 9); ctx.moveTo(20, -318 - k * 9); ctx.lineTo(130, -340 + f - k * 8 + k); }
+      ctx.stroke();
+    },
+
+    mrt(t) {
+      for (let x = -780; x <= 780; x += 260) { ctx.fillStyle = '#b0bec5'; ctx.fillRect(x - 15, -215, 30, 215); }
+      ctx.fillStyle = '#cfd8dc'; ctx.fillRect(-900, -240, 1800, 28);
+      ctx.fillStyle = '#90a4ae'; ctx.fillRect(-900, -214, 1800, 6);
+      // station
+      rr(-290, -345, 580, 108, 10, '#eceff1');
+      ctx.fillStyle = '#90caf9'; ctx.fillRect(-270, -322, 540, 50);
+      ctx.strokeStyle = '#eceff1'; ctx.lineWidth = 4; ctx.beginPath(); for (let x = -270; x < 270; x += 45) { ctx.moveTo(x, -322); ctx.lineTo(x, -272); } ctx.stroke();
+      ctx.fillStyle = '#78909c'; ctx.beginPath(); ctx.moveTo(-310, -343); ctx.quadraticCurveTo(0, -410, 310, -343); ctx.closePath(); ctx.fill();
+      pill('MRT STATION', 0, -365, 22, '#fff', '#d32f2f');
+      // lift tower
+      ctx.fillStyle = '#cfd8dc'; ctx.fillRect(300, -240, 64, 240); ctx.fillStyle = '#90caf9'; ctx.fillRect(310, -230, 44, 120);
+      // train gliding along the viaduct
+      const p = (t % 10) / 10, x0 = -1500 + p * 3000;
+      for (let c = 0; c < 4; c++) {
+        const cx = x0 + c * 158;
+        rr(cx, -284, 152, 46, c === 0 ? [20, 6, 6, 6] : c === 3 ? [6, 20, 6, 6] : 6, '#fafafa');
+        ctx.fillStyle = '#d32f2f'; ctx.fillRect(cx, -250, 152, 6);
+        ctx.fillStyle = '#37474f'; for (let w = 0; w < 4; w++) ctx.fillRect(cx + 14 + w * 34, -276, 24, 16);
+      }
+    },
+
+    wetmarket(t) {
+      ctx.fillStyle = '#fff3e0'; ctx.fillRect(-370, -225, 740, 225);
+      poly([[-410, -220], [410, -220], [335, -300], [-335, -300]], '#90a4ae');
+      ctx.strokeStyle = '#b0bec5'; ctx.lineWidth = 3; ctx.beginPath(); for (let x = -400; x <= 400; x += 22) { ctx.moveTo(x, -221); ctx.lineTo(x * 0.82, -299); } ctx.stroke();
+      pill('WET MARKET', 0, -262, 24, '#fff', '#00897b');
+      const awn = [['#e53935', 'fish'], ['#43a047', 'veg'], ['#fb8c00', 'fruit'], ['#1e88e5', 'fish']];
+      awn.forEach(([c, kind], i) => {
+        const x = -350 + i * 175;
+        for (let k = 0; k < 8; k++) poly([[x + k * 20, -200], [x + k * 20 + 20, -200], [x + k * 20 + 24, -168], [x + k * 20 + 4, -168]], k % 2 ? '#fff' : c);
+        ctx.fillStyle = '#8d6e63'; ctx.fillRect(x, -115, 165, 45);
+        for (let g = 0; g < 6; g++) {
+          const gx = x + 18 + g * 26;
+          if (kind === 'fish') { ellipse(gx, -122, 12, 6, '#90a4ae'); poly([[gx - 12, -122], [gx - 20, -128], [gx - 20, -116]], '#90a4ae'); circle(gx + 6, -123, 1.5, '#222'); }
+          else if (kind === 'veg') { circle(gx, -124, 10, g % 2 ? '#66bb6a' : '#2e7d32'); }
+          else { circle(gx, -124, 10, ['#ff7043', '#fdd835', '#e53935'][g % 3]); }
+        }
+        // swinging fish on a hook
+        const a = Math.sin(t * 2 + i) * 0.15;
+        ctx.save(); ctx.translate(x + 82, -165); ctx.rotate(a);
+        seg(0, 0, 0, 14, '#555', 2); ellipse(0, 28, 6, 14, kind === 'fish' ? '#78909c' : '#ffb300');
+        ctx.restore();
+        // ceiling fan
+        ctx.save(); ctx.translate(x + 82, -210); ctx.scale(1, 0.25); ctx.rotate(t * 8);
+        ctx.fillStyle = '#546e7a'; for (let b = 0; b < 3; b++) { ctx.rotate((Math.PI * 2) / 3); ctx.fillRect(0, -4, 30, 8); }
+        ctx.restore();
+      });
+    },
+
+    gardens(t) {
+      bigTree(-470, 1.25); bigTree(430, 1.15, '#2e7d32', '#4caf50');
+      // flower bushes
+      for (let i = 0; i < 9; i++) {
+        const x = -560 + i * 140, y = -40;
+        if (Math.abs(x) < 250) continue;
+        circle(x, y, 34, '#43a047');
+        for (let k = 0; k < 6; k++) circle(x + Math.cos(k) * 22, y - 10 + Math.sin(k * 2) * 14, 6, ['#ff70a6', '#ba68c8', '#fff176'][k % 3]);
+      }
+      // white bandstand
+      ellipse(-60, -60, 150, 14, '#eceff1');
+      for (let k = 0; k < 6; k++) { ctx.fillStyle = '#ffffff'; ctx.fillRect(-190 + k * 52, -205, 10, 145); }
+      ctx.fillStyle = '#ffffff'; ctx.beginPath(); ctx.ellipse(-60, -205, 160, 85, 0, Math.PI, 0); ctx.closePath(); ctx.fill();
+      ctx.strokeStyle = '#cfd8dc'; ctx.lineWidth = 3; ctx.beginPath(); ctx.ellipse(-60, -205, 160, 85, 0, Math.PI, 0); ctx.stroke();
+      ctx.fillStyle = '#eceff1'; ctx.fillRect(-225, -212, 330, 10);
+      circle(-60, -296, 8, '#ffd54f');
+      // orchid arch
+      for (let k = 0; k <= 14; k++) {
+        const a = Math.PI + (k / 14) * Math.PI;
+        circle(230 + Math.cos(a) * 80, -40 + Math.sin(a) * 200, 11, k % 2 ? '#ba68c8' : '#f06292');
+      }
+      pill('BOTANIC GARDENS', -60, -330, 22, '#fff', '#2e7d32');
+      // butterflies
+      for (let i = 0; i < 4; i++) {
+        const x = -250 + i * 170 + Math.sin(t * 0.8 + i) * 60, y = -250 + Math.cos(t * 1.3 + i * 2) * 40;
+        const w = Math.abs(Math.sin(t * 12 + i)) * 10 + 2;
+        const c = ['#ff9800', '#e91e63', '#29b6f6', '#ffeb3b'][i];
+        ellipse(x - w / 2, y, w / 2 + 1, 8, c); ellipse(x + w / 2, y, w / 2 + 1, 8, c);
+        seg(x, y - 6, x, y + 6, '#333', 2);
+      }
+    },
+
+    zoo(t) {
+      bigTree(-90, 1.2); bigTree(520, 1.0);
+      // arch entrance
+      ctx.fillStyle = '#a1887f'; ctx.fillRect(-500, -235, 34, 235); ctx.fillRect(-350, -235, 34, 235);
+      rr(-525, -290, 235, 70, 14, '#6d4c41');
+      txt('ZOO', -440, -255, 36, '#ffe082');
+      ctx.font = `28px ${EMOJI}`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText('🐾', -340, -255); ctx.textBaseline = 'alphabetic';
+      // giraffe
+      const gx = 120, bob = Math.sin(t * 1.5) * 0.08;
+      for (const lx of [-40, -15, 25, 45]) seg(gx + lx, -150, gx + lx, -60, '#f9a825', 9);
+      ellipse(gx, -165, 68, 34, '#fbc02d');
+      ctx.save(); ctx.translate(gx + 45, -180); ctx.rotate(0.35 + bob);
+      ctx.fillStyle = '#fbc02d'; ctx.fillRect(-10, -170, 22, 175);
+      ctx.translate(0, -175); ellipse(14, 0, 28, 15, '#fbc02d'); circle(32, 2, 4, '#5d4037');
+      seg(-4, -10, -6, -26, '#8d6e63', 4); seg(6, -12, 6, -28, '#8d6e63', 4);
+      circle(18, -4, 3, '#222');
+      ctx.restore();
+      [[-30, -170], [10, -155], [30, -175], [-5, -180], [-45, -158]].forEach(([dx, dy]) => circle(gx + dx, dy, 7, '#a1662f'));
+      // elephant waving its trunk
+      const ex = 360;
+      for (const lx of [-50, -20, 25, 50]) { ctx.fillStyle = '#90a4ae'; ctx.fillRect(ex + lx - 12, -120, 24, 60); }
+      ellipse(ex, -140, 80, 55, '#9e9e9e');
+      circle(ex - 85, -160, 42, '#9e9e9e');
+      ellipse(ex - 70, -160, 26, 34, '#bdbdbd');
+      circle(ex - 100, -170, 4, '#222');
+      const ta = Math.sin(t * 2) * 0.5;
+      ctx.strokeStyle = '#9e9e9e'; ctx.lineWidth = 16; ctx.lineCap = 'round';
+      ctx.beginPath(); ctx.moveTo(ex - 118, -150); ctx.quadraticCurveTo(ex - 150, -110, ex - 150 + Math.sin(ta) * 30, -170 - Math.cos(ta) * 30); ctx.stroke();
+      // monkey swinging from the tree
+      const ma = Math.sin(t * 2.2) * 0.5;
+      ctx.save(); ctx.translate(-60, -240); ctx.rotate(ma);
+      seg(0, 0, 0, 40, '#6d4c41', 5); circle(0, 55, 15, '#8d6e63'); circle(0, 52, 9, '#d7ccc8'); circle(-3, 50, 2, '#222'); circle(3, 50, 2, '#222');
+      ctx.restore();
+    },
+
+    birdpark(t) {
+      ctx.fillStyle = 'rgba(178,223,219,.45)';
+      ctx.beginPath(); ctx.ellipse(0, 0, 500, 340, 0, Math.PI, 0); ctx.closePath(); ctx.fill();
+      bigTree(-300, 1.0); bigTree(320, 0.9);
+      // waterfall
+      poly([[-120, 0], [-150, -200], [-90, -260], [-20, -240], [10, 0]], '#8d8d8d');
+      ctx.fillStyle = '#81d4fa'; ctx.fillRect(-90, -240, 50, 240);
+      ctx.strokeStyle = 'rgba(255,255,255,.8)'; ctx.lineWidth = 3; ctx.beginPath();
+      for (let k = 0; k < 4; k++) { const yy = -240 + ((t * 120 + k * 60) % 240); ctx.moveTo(-82 + k * 11, yy); ctx.lineTo(-82 + k * 11, yy + 20); }
+      ctx.stroke();
+      // flamingos
+      [[180, 0], [250, 1]].forEach(([fx, ph]) => {
+        const b = Math.sin(t * 1.5 + ph) * 3;
+        seg(fx, -60, fx, -120, '#f48fb1', 4);
+        ellipse(fx - 6, -132 + b, 26, 15, '#f06292');
+        ctx.strokeStyle = '#f06292'; ctx.lineWidth = 6; ctx.beginPath(); ctx.moveTo(fx + 14, -138 + b); ctx.quadraticCurveTo(fx + 40, -170, fx + 20, -200 + b); ctx.stroke();
+        circle(fx + 22, -204 + b, 8, '#f06292'); poly([[fx + 28, -206 + b], [fx + 38, -200 + b], [fx + 28, -198 + b]], '#333');
+      });
+      // mesh of the aviary
+      ctx.strokeStyle = 'rgba(84,110,122,.5)'; ctx.lineWidth = 2;
+      for (let k = 1; k < 8; k++) { ctx.beginPath(); ctx.ellipse(0, 0, 500 * k / 8, 340, 0, Math.PI, 0); ctx.stroke(); }
+      for (let k = 1; k < 5; k++) { ctx.beginPath(); ctx.ellipse(0, 0, 500, 340 * k / 5, 0, Math.PI, 0); ctx.stroke(); }
+      ctx.strokeStyle = '#546e7a'; ctx.lineWidth = 5; ctx.beginPath(); ctx.ellipse(0, 0, 500, 340, 0, Math.PI, 0); ctx.stroke();
+      // birds flying
+      const cols = ['#e53935', '#1e88e5', '#fdd835', '#43a047', '#8e24aa', '#ff7043', '#00acc1'];
+      for (let i = 0; i < 7; i++) {
+        const x = mod(t * (50 + i * 9) + i * 140, 800) - 400, y = -170 - i * 18 - Math.sin(t * 2 + i) * 25;
+        flyingBird(x, y, 1, t + i, cols[i]);
+      }
+      pill('BIRD PARK', 0, -315, 26, '#fff', '#00acc1');
+    },
+
+    science(t) {
+      rr(-380, -200, 500, 200, 6, '#cfd8dc');
+      ctx.fillStyle = '#90caf9'; for (let r = 0; r < 2; r++) for (let c = 0; c < 8; c++) ctx.fillRect(-362 + c * 60, -165 + r * 55, 44, 32);
+      // planetarium dome
+      ctx.fillStyle = '#b0bec5'; ctx.beginPath(); ctx.arc(250, -150, 165, Math.PI, 0); ctx.closePath(); ctx.fill();
+      ctx.strokeStyle = '#eceff1'; ctx.lineWidth = 2;
+      for (let k = 1; k < 6; k++) { ctx.beginPath(); ctx.ellipse(250, -150, 165 * k / 6, 165, 0, Math.PI, 0); ctx.stroke(); }
+      for (let k = 1; k < 4; k++) { ctx.beginPath(); ctx.ellipse(250, -150, 165, 165 * k / 4, 0, Math.PI, 0); ctx.stroke(); }
+      ctx.fillStyle = '#90a4ae'; ctx.fillRect(80, -155, 340, 155);
+      pill('SCIENCE CENTRE', -130, -225, 22, '#fff', '#5e35b1');
+      // spinning atom sign
+      const ax = -130, ay = -300;
+      ctx.strokeStyle = '#3949ab'; ctx.lineWidth = 4;
+      for (let k = 0; k < 3; k++) {
+        ctx.save(); ctx.translate(ax, ay); ctx.rotate((k * Math.PI) / 3);
+        ctx.beginPath(); ctx.ellipse(0, 0, 60, 20, 0, 0, 7); ctx.stroke();
+        const e = t * 3 + k * 2; circle(Math.cos(e) * 60, Math.sin(e) * 20, 6, '#ffb300');
+        ctx.restore();
+      }
+      circle(ax, ay, 12, '#e53935');
+      // rocket model
+      const rx = -470;
+      rr(rx - 22, -300, 44, 300, 12, '#fafafa');
+      poly([[rx - 22, -296], [rx + 22, -296], [rx, -360]], '#e53935');
+      poly([[rx - 22, -60], [rx - 48, 0], [rx - 22, -10]], '#e53935'); poly([[rx + 22, -60], [rx + 48, 0], [rx + 22, -10]], '#e53935');
+      circle(rx, -240, 12, '#81d4fa'); ctx.strokeStyle = '#90a4ae'; ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(rx, -240, 12, 0, 7); ctx.stroke();
+    },
+
+    beach(t) {
+      ctx.fillStyle = '#4fc3f7'; ctx.fillRect(-900, -175, 1800, 110);
+      ctx.fillStyle = '#29b6f6'; ctx.fillRect(-900, -175, 1800, 14);
+      ctx.strokeStyle = 'rgba(255,255,255,.85)'; ctx.lineWidth = 3;
+      for (let r = 0; r < 3; r++) {
+        ctx.beginPath();
+        for (let x = -900; x < 900; x += 60) { const xx = x + mod(t * (20 + r * 10), 60); ctx.moveTo(xx, -150 + r * 25); ctx.quadraticCurveTo(xx + 15, -158 + r * 25, xx + 30, -150 + r * 25); }
+        ctx.stroke();
+      }
+      ctx.fillStyle = '#ffe0a3'; ctx.fillRect(-900, -70, 1800, 70);
+      // little sailing boat
+      const sx = mod(t * 15, 1400) - 700;
+      poly([[sx - 30, -172], [sx + 30, -172], [sx + 20, -160], [sx - 20, -160]], '#8d6e63');
+      poly([[sx, -172], [sx, -225], [sx + 28, -175]], '#ffffff');
+      palm(-430, 1.1, t, 1); palm(-560, 0.9, t, -1); palm(440, 1.15, t, -1); palm(560, 0.9, t, 1);
+      // umbrellas
+      [[-500, '#e53935'], [500, '#1e88e5']].forEach(([ux, c]) => {
+        seg(ux, 0, ux, -110, '#795548', 4);
+        ctx.fillStyle = c; ctx.beginPath(); ctx.moveTo(ux - 60, -100); ctx.quadraticCurveTo(ux, -160, ux + 60, -100); ctx.closePath(); ctx.fill();
+      });
+      // beach ball bouncing
+      const by = -100 - Math.abs(Math.sin(t * 3)) * 70;
+      circle(-470, by, 16, '#ffffff'); ctx.fillStyle = '#e53935'; ctx.beginPath(); ctx.arc(-470, by, 16, -0.5, 0.6); ctx.lineTo(-470, by); ctx.fill();
+      ctx.fillStyle = '#1e88e5'; ctx.beginPath(); ctx.arc(-470, by, 16, 2, 3.1); ctx.lineTo(-470, by); ctx.fill();
+      pill('BEACH', 0, -235, 28, '#fff', '#0288d1');
+    },
+
+    pool(t) {
+      rr(-440, -170, 320, 170, 8, '#e3f2fd');
+      ctx.fillStyle = '#90caf9'; for (let c = 0; c < 5; c++) ctx.fillRect(-420 + c * 60, -140, 40, 50);
+      pill('SWIMMING POOL', -280, -195, 20, '#fff', '#039be5');
+      // slide tower
+      ctx.fillStyle = '#ffb300'; ctx.fillRect(225, -335, 60, 335);
+      rr(210, -350, 90, 20, 6, '#ff7043');
+      const tube = (c1, c2, pts) => {
+        ctx.lineCap = 'round';
+        ctx.strokeStyle = c1; ctx.lineWidth = 30;
+        ctx.beginPath(); ctx.moveTo(...pts[0]); ctx.bezierCurveTo(...pts[1], ...pts[2], ...pts[3]); ctx.stroke();
+        ctx.strokeStyle = c2; ctx.lineWidth = 18; ctx.stroke();
+      };
+      const A = [[225, -320], [-60, -320], [120, -150], [-40, -90]];
+      const B = [[285, -260], [520, -250], [330, -130], [470, -90]];
+      tube('#e53935', '#ef9a9a', A); tube('#1e88e5', '#90caf9', B);
+      const bez = (P, u) => [0, 1].map((k) => Math.pow(1 - u, 3) * P[0][k] + 3 * Math.pow(1 - u, 2) * u * P[1][k] + 3 * (1 - u) * u * u * P[2][k] + u * u * u * P[3][k]);
+      [[A, 0], [B, 0.5]].forEach(([P, off]) => {
+        const u = (t * 0.3 + off) % 1;
+        const [x, y] = bez(P, u);
+        circle(x, y - 6, 10, '#eec09a');
+        if (u > 0.85) for (let k = 0; k < 5; k++) circle(P[3][0] + (k - 2) * 12, P[3][1] - (u - 0.85) * 400 * (1 - Math.abs(k - 2) / 3), 5, '#b3e5fc');
+      });
+      pill('🌊 WATER SLIDES', 255, -380, 18, '#fff', '#ff7043');
+    },
+
+    school(t) {
+      ctx.fillStyle = '#fff8e1'; ctx.fillRect(-390, -250, 780, 250);
+      for (const y of [-175, -100]) { ctx.fillStyle = '#ef5350'; ctx.fillRect(-390, y, 780, 10); }
+      ctx.fillStyle = '#90caf9';
+      for (let r = 0; r < 3; r++) for (let c = 0; c < 10; c++) if (Math.abs(c - 4.5) > 1) ctx.fillRect(-370 + c * 76, -235 + r * 75, 44, 40);
+      // clock tower
+      ctx.fillStyle = '#ffcc80'; ctx.fillRect(-55, -345, 110, 345);
+      poly([[-70, -345], [70, -345], [0, -400]], '#e53935');
+      circle(0, -300, 34, '#fff'); ctx.strokeStyle = '#5d4037'; ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(0, -300, 34, 0, 7); ctx.stroke();
+      const mA = t * 0.8, hA = t * 0.8 / 12;
+      seg(0, -300, Math.sin(hA) * 18, -300 - Math.cos(hA) * 18, '#5d4037', 5);
+      seg(0, -300, Math.sin(mA) * 27, -300 - Math.cos(mA) * 27, '#5d4037', 3);
+      pill('SCHOOL', 0, -230, 22, '#fff', '#e53935');
+      // flag waving on the pole
+      const fx = 450;
+      seg(fx, 0, fx, -360, '#9e9e9e', 6); circle(fx, -362, 6, '#ffd54f');
+      ctx.beginPath();
+      for (let k = 0; k <= 10; k++) { const x = fx + k * 10, y = -355 + Math.sin(t * 5 - k * 0.6) * 5 * (k / 10); k ? ctx.lineTo(x, y) : ctx.moveTo(x, y); }
+      for (let k = 10; k >= 0; k--) { const x = fx + k * 10, y = -325 + Math.sin(t * 5 - k * 0.6) * 5 * (k / 10); ctx.lineTo(x, y); }
+      ctx.closePath(); ctx.fillStyle = '#ef3340'; ctx.fill();
+      ctx.save(); ctx.clip();
+      ctx.fillStyle = '#ffffff'; ctx.fillRect(fx, -340, 110, 30);
+      ctx.restore();
+      // goal posts on the field
+      ctx.strokeStyle = '#fff'; ctx.lineWidth = 5; ctx.strokeRect(-560, -90, 80, 60);
+    },
+
+    hospital(t) {
+      rr(-270, -360, 540, 360, 8, '#fafafa');
+      ctx.fillStyle = '#bbdefb';
+      for (let r = 0; r < 6; r++) for (let c = 0; c < 8; c++) if (!(r < 2 && c > 2 && c < 5)) ctx.fillRect(-245 + c * 63, -330 + r * 50, 40, 30);
+      rr(-45, -345, 90, 90, 14, '#1e88e5');
+      txt('H', 0, -298, 66, '#fff');
+      pill('HOSPITAL', 0, -225, 22, '#fff', '#1565c0');
+      ctx.fillStyle = '#e3f2fd'; ctx.fillRect(-270, -110, 540, 10);
+      // helicopter resting on the roof, rotor spinning
+      const hx = 160, hy = -380;
+      ellipse(hx, hy, 34, 16, '#ff7043'); ellipse(hx + 14, hy - 3, 12, 9, '#b3e5fc');
+      seg(hx - 30, hy, hx - 75, hy - 6, '#ff7043', 6);
+      seg(hx - 20, hy + 18, hx + 25, hy + 18, '#555', 3);
+      const rl = 60 * Math.cos(t * 20);
+      seg(hx - rl, hy - 20, hx + rl, hy - 20, '#37474f', 4); seg(hx, hy - 14, hx, hy - 20, '#37474f', 4);
+      ellipse(hx, hy + 22, 50, 6, 'rgba(0,0,0,.12)');
+    },
+
+    kopitiam(t) {
+      const shops = [['#ffcdd2', 'TAILOR', '#c62828'], ['#fff9c4', 'KOPITIAM', '#6d4c41'], ['#c8e6c9', 'BAKERY', '#2e7d32'], ['#bbdefb', 'PROVISION', '#1565c0']];
+      shops.forEach(([c, name, sc], i) => {
+        const x = -400 + i * 200;
+        ctx.fillStyle = c; ctx.fillRect(x, -270, 196, 270);
+        poly([[x - 4, -270], [x + 200, -270], [x + 170, -300], [x + 26, -300]], sc);
+        for (let w = 0; w < 3; w++) {
+          rr(x + 18 + w * 58, -250, 44, 70, 20, '#5d4037');
+          ctx.fillStyle = ['#81c784', '#4fc3f7', '#ffb74d'][i % 3];
+          ctx.fillRect(x + 22 + w * 58, -235, 16, 52); ctx.fillRect(x + 42 + w * 58, -235, 16, 52);
+        }
+        rr(x + 12, -160, 172, 40, 6, sc);
+        txt(name, x + 98, -140, name.length > 8 ? 19 : 22, '#ffe082');
+        ctx.fillStyle = 'rgba(0,0,0,.25)'; for (let a = 0; a < 3; a++) { ctx.beginPath(); ctx.arc(x + 35 + a * 63, -60, 25, Math.PI, 0); ctx.fill(); }
+      });
+      // giant kopi cup on the roof with steam
+      const cx = -100;
+      poly([[cx - 40, -360], [cx + 40, -360], [cx + 30, -305], [cx - 30, -305]], '#ffffff');
+      ctx.fillStyle = '#795548'; ctx.fillRect(cx - 38, -356, 76, 10);
+      ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 8; ctx.beginPath(); ctx.arc(cx + 42, -335, 14, -1.2, 1.2); ctx.stroke();
+      ellipse(cx, -302, 55, 8, '#ffffff');
+      ctx.strokeStyle = 'rgba(255,255,255,.85)'; ctx.lineWidth = 4;
+      for (let k = 0; k < 3; k++) {
+        ctx.beginPath();
+        for (let s2 = 0; s2 < 12; s2++) { const yy = -365 - s2 * 4, xx = cx - 18 + k * 18 + Math.sin(t * 3 + s2 * 0.6 + k) * 5; s2 ? ctx.lineTo(xx, yy) : ctx.moveTo(xx, yy); }
+        ctx.stroke();
+      }
+    },
+
+    airport(t) {
+      ctx.fillStyle = '#b3e5fc'; ctx.fillRect(-440, -150, 760, 150);
+      ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 3; ctx.beginPath();
+      for (let x = -440; x <= 320; x += 40) { ctx.moveTo(x, -150); ctx.lineTo(x, 0); } ctx.moveTo(-440, -90); ctx.lineTo(320, -90); ctx.stroke();
+      ctx.fillStyle = '#eceff1'; ctx.beginPath(); ctx.moveTo(-470, -148); ctx.quadraticCurveTo(-60, -230, 350, -148); ctx.lineTo(350, -140); ctx.lineTo(-470, -140); ctx.closePath(); ctx.fill();
+      pill('AIRPORT', -60, -215, 24, '#fff', '#455a64');
+      // control tower with spinning radar
+      const tx = 420;
+      ctx.fillStyle = '#eceff1'; ctx.fillRect(tx - 22, -250, 44, 250);
+      poly([[tx - 50, -310], [tx + 50, -310], [tx + 38, -255], [tx - 38, -255]], '#37474f');
+      ctx.fillStyle = '#81d4fa'; ctx.fillRect(tx - 42, -302, 84, 30);
+      ctx.fillStyle = '#eceff1'; ctx.fillRect(tx - 50, -318, 100, 10);
+      const rs = Math.cos(t * 4) * 22;
+      seg(tx, -318, tx, -335, '#90a4ae', 4); seg(tx - rs, -338, tx + rs, -338, '#ff7043', 6);
+      // aeroplane taking off across the sky
+      const p = (t % 8) / 8;
+      const px = -800 + p * 1700, py = -110 - p * p * 330, ang = -Math.atan(0.42 * p * 2) * 0.9;
+      ctx.save(); ctx.translate(px, py); ctx.rotate(ang);
+      ellipse(0, 0, 70, 13, '#ffffff');
+      poly([[-60, -4], [-78, -40], [-62, -40], [-42, -6]], '#1e88e5');
+      poly([[-10, 2], [-40, 30], [-24, 30], [18, 4]], '#cfd8dc');
+      ctx.fillStyle = '#1e88e5'; for (let w = 0; w < 8; w++) circle(-40 + w * 12, -3, 3, '#1e88e5');
+      ellipse(62, -2, 10, 7, '#37474f');
+      ctx.restore();
+    },
+
+    stadium(t) {
+      // bowl
+      ctx.fillStyle = '#eceff1'; ctx.beginPath(); ctx.ellipse(0, -110, 430, 120, 0, Math.PI, 0); ctx.lineTo(430, 0); ctx.lineTo(-430, 0); ctx.closePath(); ctx.fill();
+      const bands = ['#c2185b', '#ffffff', '#1e88e5', '#ffffff', '#c2185b'];
+      bands.forEach((c, k) => { ctx.strokeStyle = c; ctx.lineWidth = 12; ctx.beginPath(); ctx.ellipse(0, -110, 400 - k * 30, 100 - k * 14, 0, Math.PI * 1.04, Math.PI * 1.96); ctx.stroke(); });
+      // crowd doing the wave
+      const cols = ['#ff6b6b', '#4d96ff', '#ffd93d', '#6bcb77', '#c77dff', '#ff9f43'];
+      for (let k = 0; k < 40; k++) {
+        const a = Math.PI * 1.06 + (k / 39) * Math.PI * 0.88;
+        const x = Math.cos(a) * 415, y = -110 + Math.sin(a) * 112;
+        const up = Math.max(0, Math.sin(t * 3 - k * 0.35)) * 10;
+        circle(x, y - 8 - up, 6, cols[k % cols.length]);
+      }
+      // roof canopy
+      ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 18; ctx.beginPath(); ctx.ellipse(0, -112, 440, 130, 0, Math.PI * 1.02, Math.PI * 1.98); ctx.stroke();
+      pill('STADIUM', 0, -150, 26, '#fff', '#c2185b');
+      // floodlights
+      for (const fx of [-480, 480]) {
+        seg(fx, 0, fx, -290, '#90a4ae', 10);
+        rr(fx - 36, -330, 72, 44, 6, '#455a64');
+        for (let r = 0; r < 2; r++) for (let c = 0; c < 3; c++) circle(fx - 22 + c * 22, -318 + r * 20, 7, '#fff59d');
+        ctx.globalAlpha = 0.18 + Math.sin(t * 3) * 0.05; circle(fx, -308, 50, '#fff59d'); ctx.globalAlpha = 1;
+      }
+      // flags on the roof
+      for (const fx of [-200, 0, 200]) {
+        const y0 = -240 + Math.abs(fx) * 0.12;
+        seg(fx, y0 + 20, fx, y0 - 30, '#9e9e9e', 3);
+        poly([[fx, y0 - 30], [fx + 34, y0 - 24 + Math.sin(t * 6 + fx) * 4], [fx, y0 - 14]], ['#ffd93d', '#6bcb77', '#4d96ff'][(fx / 200 + 1) | 0]);
+      }
+    },
+
+    interchange(t) {
+      for (let x = -540; x <= 540; x += 180) { ctx.fillStyle = '#90a4ae'; ctx.fillRect(x - 10, -235, 20, 235); }
+      for (let x = -540; x < 540; x += 180) {
+        ctx.fillStyle = '#eceff1'; ctx.beginPath(); ctx.moveTo(x - 12, -230); ctx.quadraticCurveTo(x + 90, -300, x + 192, -230); ctx.closePath(); ctx.fill();
+        ctx.strokeStyle = '#b0bec5'; ctx.lineWidth = 3; ctx.stroke();
+      }
+      ctx.fillStyle = '#cfd8dc'; ctx.fillRect(-560, -236, 1120, 10);
+      pill('BUS INTERCHANGE', 0, -275, 26, '#fff', '#1e5aa8');
+      // parked buses in different colours
+      [[-430, '#7e57c2', '12'], [-120, '#e53935', '45'], [190, '#ffb300', '7']].forEach(([bx, c, no], i) => {
+        const b = Math.sin(t * 2 + i) * 0.6;
+        rr(bx, -185 + b, 230, 80, [16, 8, 4, 4], c);
+        ctx.fillStyle = '#28343c'; ctx.fillRect(bx + 10, -170 + b, 210, 28);
+        ctx.fillStyle = '#ffffff'; ctx.fillRect(bx + 10, -185 + b, 210, 8);
+        rr(bx + 8, -184 + b, 36, 14, 3, '#111'); txt(no, bx + 26, -177 + b, 11, '#ffb000');
+        circle(bx + 50, -104, 15, '#1d1d1d'); circle(bx + 185, -104, 15, '#1d1d1d');
+      });
+      // departure board
+      rr(420, -215, 150, 90, 8, '#263238');
+      txt('88  ▸ 1 min', 432, -192, 15, '#ffb000', 'left', 700);
+      txt('12  ▸ 4 min', 432, -170, 15, '#ffb000', 'left', 700);
+      txt('45  ▸ 9 min', 432, -148, 15, '#ffb000', 'left', 700);
+    },
+  };
+
+  function drawLandmark(sg) {
+    const fn = LANDMARKS[sg.key];
+    if (!fn) return;
+    const lx = sg.wx + game.dist + 545;
+    if (lx < -800 || lx > W + 800) return;
+    ctx.save();
+    ctx.translate(lx, 444);
+    fn(game.time);
+    ctx.restore();
+    ctx.globalAlpha = 1; ctx.lineCap = 'butt'; ctx.textBaseline = 'alphabetic';
+  }
+
+  // ====================================================================
   // Route map (top-down cartoon map with the bus moving along the route)
   // ====================================================================
   const MAP = { x: 70, y: 88, w: 1140, h: 612 };
@@ -1518,6 +2080,7 @@
     drawSky();
     drawBlocks();
     drawVerge();
+    for (const s of game.signs) drawLandmark(s);
     drawRoad();
     drawBus();
     drawFX();

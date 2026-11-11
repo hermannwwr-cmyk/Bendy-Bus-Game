@@ -18,6 +18,30 @@ A counting game for kids around 6 years old. A green Singapore‑style **bendy b
 5. A wrong answer is never a dead end. The game says "Let's count together!", puts a number on each passenger one at a time, and lets the child try again.
 6. A right answer earns a star ⭐, confetti and a simple number sentence like `3 − 1 + 2 = 5`, which introduces adding and taking away.
 
+### 🏙️ Every bus stop looks different
+
+Each route picks 5 of 16 places. Every place has its own animated landmark beside the road, a bus stop sign in its own colour, and a sound when the bus arrives:
+
+| Stop | What you see |
+| --- | --- |
+| 🍜 Hawker Centre | Stalls (Chicken Rice, Laksa, Satay…), steaming pots, swinging lanterns |
+| 🛝 Playground | A child going down the slide, swings, see‑saw |
+| 📚 Library | Giant colourful book spines, open book on the roof |
+| 🚇 MRT Station | Raised station, train gliding along the track |
+| 🐟 Wet Market | Striped awnings, fish, fruit and vegetables, spinning ceiling fans |
+| 🌺 Botanic Gardens | White bandstand, orchid arch, flowers, butterflies |
+| 🦒 Zoo | Giraffe, elephant waving its trunk, swinging monkey |
+| 🦜 Bird Park | Aviary dome, waterfall, flamingos, birds flying around |
+| 🔬 Science Centre | Planetarium dome, spinning atom sign, rocket model |
+| 🏖️ Beach | Sea and waves, palm trees, sailing boat, bouncing beach ball |
+| 🏊 Swimming Pool | Water slides with children sliding down and splashing |
+| 🏫 School | Clock tower with moving hands, waving flag |
+| 🏥 Hospital | Big "H" sign, helicopter with spinning rotor |
+| ☕ Kopitiam | Row of colourful shophouses, giant steaming kopi cup |
+| ✈️ Airport | Terminal, control tower with radar, plane taking off |
+| ⚽ Stadium | Crowd doing the wave, floodlights, flags |
+| 🚌 Bus Interchange | Big shelter, parked buses in other colours, departure board |
+
 ### 🗺️ Route map
 
 A cartoon top‑down map shows the whole bus route: the start flag, every bus stop with its picture and name, HDB blocks, trees, a river and the sea. The bus moves along the road on the map in real time. Stops already visited get a green tick, and the next stop glows yellow.
