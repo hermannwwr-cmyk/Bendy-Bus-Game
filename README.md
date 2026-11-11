@@ -2,6 +2,8 @@
 
 A counting game for kids around 6 years old. A green Singapore‑style **bendy bus** (articulated bus) drives past HDB blocks from stop to stop. At each stop, passengers get **off** and **on**, and the child counts them.
 
+🎬 **[Watch a 10‑second gameplay video](media/bendy-bus-gameplay.mp4)** (no sound)
+
 ## How to play
 
 1. Open `index.html` in any modern browser (desktop, iPad or phone in landscape). No install or build step is needed.
