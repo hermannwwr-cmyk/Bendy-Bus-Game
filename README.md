@@ -7,15 +7,16 @@ A counting game for kids around 6 years old. A green Singapore‑style **bendy b
 ## How to play
 
 1. Open `index.html` in any modern browser (desktop, iPad or phone in landscape). No install or build step is needed.
-2. Tap **▶️ Play**. The game uses one difficulty: up to **10 passengers** on the bus.
+2. Tap **▶️ Play**. The game is kept simple: never more than **5 passengers** on the bus, and at each stop people **either** get on **or** get off, never both.
 3. Ride the route: 5 bus stops (Hawker Centre, Zoo, MRT Station, Kopitiam…) and then the Bus Interchange.
 4. At each stop:
    - The bell rings *ding!* when someone wants to get off.
    - People walk out of the **EXIT** door. Each one gets a number bubble and the game counts aloud: "1, 2…"
    - People in the queue tap their card at the **ENTRY** door (*beep!*) and take a seat, and the game counts them too.
-   - Then the child answers **"How many passengers are on the bus now?"** by tapping one of 3 big number buttons. Each button also shows dots, so the child can match amounts.
+   - Then the child answers **"How many people got on the bus?"** or **"How many people got off the bus?"** by tapping one of 3 big number buttons. Each button also shows dots, so the child can match amounts.
+   - People who got off wait on the pavement, and people who just got on glow yellow with an arrow above them, so the child can count them again.
 5. A wrong answer is never a dead end. The game says "Let's count together!", puts a number on each passenger one at a time, and lets the child try again.
-6. A right answer earns a star ⭐, confetti and a simple number sentence like `3 − 1 + 2 = 5`, which introduces adding and taking away.
+6. A right answer earns a star ⭐, confetti and a message like **3 got on! 🎫**.
 
 ### 🏙️ Every bus stop looks different
 

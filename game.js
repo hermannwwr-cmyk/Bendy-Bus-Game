@@ -310,6 +310,8 @@
   const ROUTE_NO = '88';
 
   const LEVELS = {
+    // simple: at most 5 on the bus, and at each stop people EITHER get on OR get off
+    simple: { cap: 5, maxOn: 3, maxOff: 2, name: 'Simple', oneWay: true },
     easy: { cap: 5, maxOn: 3, maxOff: 2, name: 'Easy' },
     medium: { cap: 10, maxOn: 4, maxOff: 3, name: 'Medium' },
     big: { cap: 15, maxOn: 5, maxOff: 4, name: 'Big Kid' },
@@ -439,8 +441,9 @@
 
   function makeChoices(ans, cap) {
     const hi = Math.max(cap, ans + 2);
-    const near = shuffle([ans - 1, ans + 1]).filter((n) => n >= 0 && n <= hi);
-    const far = shuffle([ans - 2, ans + 2, ans - 3, ans + 3]).filter((n) => n >= 0 && n <= hi);
+    const lo = game.level && game.level.oneWay && ans > 0 ? 1 : 0;   // someone always gets on or off
+    const near = shuffle([ans - 1, ans + 1]).filter((n) => n >= lo && n <= hi);
+    const far = shuffle([ans - 2, ans + 2, ans - 3, ans + 3]).filter((n) => n >= lo && n <= hi);
     const set = new Set([ans]);
     for (const n of [...near, ...far]) { if (set.size >= 3) break; set.add(n); }
     return [...set].sort((a, b) => a - b);
@@ -500,7 +503,7 @@
     say(`${targets.length}!`, true);
     await sleep(900);
   }
-  const busTargets = () => [...game.onboard].sort((a, b) => SLOTS[a.slot] - SLOTS[b.slot])
+  const busTargets = (list = game.onboard) => [...list].sort((a, b) => SLOTS[a.slot] - SLOTS[b.slot])
     .map((p) => () => ({ x: SLOTS[p.slot], y: 462 + game.kneel }));
   const peopleTargets = (list) => [...list].sort((a, b) => a.wx - b.wx)
     .map((p) => () => ({ x: p.wx + game.dist, y: p.y - 112 * p.look.size * depth(p.y) }));
@@ -553,6 +556,18 @@
     const stops = [];
     let onboard = 0;
     places.forEach(([name, icon, key, color], i) => {
+      if (level.oneWay) {
+        // Only one thing happens per stop, so there is just one group to count.
+        let off = 0, on = 0;
+        const getOn = i === 0 || onboard === 0 || (onboard < level.cap && (i % 2 === 0 ? Math.random() < 0.75 : Math.random() < 0.35));
+        if (getOn) on = randi(i === 0 ? 2 : 1, Math.min(level.maxOn, level.cap - onboard));
+        else off = randi(1, Math.min(level.maxOff, onboard));
+        // keep someone on board for the last stop
+        if (i === 4 && onboard - off + on === 0) { off = 0; on = randi(1, 2); }
+        stops.push({ name, icon, key, color, off, on, terminus: false });
+        onboard = onboard - off + on;
+        return;
+      }
       let off = 0, on;
       if (i > 0) off = randi(onboard > 0 ? 1 : 0, Math.min(level.maxOff, onboard));
       if (i > 0 && Math.random() < 0.25) off = randi(0, Math.min(level.maxOff, onboard));
@@ -647,15 +662,18 @@
       say(stop.terminus ? 'Last stop! Everybody gets off. Count with me!' : "Let's count who gets off!", true);
       await sleep(2000);
       const spots = [];
+      const wait = stop.terminus || game.level.oneWay;
       if (stop.terminus) {
         const n = stop.off;
         const span = Math.min(940, n * 68);
         for (let k = 0; k < n; k++) spots.push({ x: 1220 - span + (k + 0.5) * (span / n), y: PAVE_Y - 6 + (k % 2) * 14 });
         spots.sort((a, b) => Math.abs(a.x - DOOR_OUT) - Math.abs(b.x - DOOR_OUT));
+      } else {
+        for (let k = 0; k < stop.off; k++) spots.push({ x: DOOR_OUT + 110 + k * 80, y: PAVE_Y - 2 + (k % 2) * 10 });
       }
       game.alighted = [];
       for (let k = 0; k < stop.off; k++) {
-        await alightOne(k + 1, stop.terminus ? spots[k] : null);
+        await alightOne(k + 1, wait ? spots[k] : null);
       }
       await sleep(900);
       say(`${stop.off} got off.`, true);
@@ -663,6 +681,7 @@
     }
 
     // ---- Getting on ----
+    game.boarded = [];
     if (stop.on > 0) {
       banner("Now count who gets ON! 🎫", 2400);
       say("Now let's count who gets on!", true);
@@ -673,7 +692,7 @@
       await sleep(700);
       say(`${stop.on} got on.`, true);
       await sleep(1500);
-    } else if (!stop.terminus) {
+    } else if (!stop.terminus && !game.level.oneWay) {
       banner('Nobody is getting on here 🙂', 2200);
       say('Nobody is getting on here.', true);
       await sleep(2200);
@@ -691,6 +710,27 @@
       const first = await ask('How many people got off the bus?', stop.off, null,
         () => countAloud(peopleTargets(game.alighted)));
       await reward(first, `${stop.off} got off!`, null);
+    } else if (game.level.oneWay) {
+      // Ask only about the group the child just counted.
+      // (At the first stop the warm-up already asked about these same people.)
+      if (stop.on > 0 && idx === 0) {
+        // nothing more to ask
+      } else if (stop.on > 0) {
+        game.glow = game.boarded;   // make the new passengers easy to spot
+        const first = await ask('How many people got on the bus?', stop.on, null,
+          () => countAloud(busTargets(game.boarded)));
+        game.glow = null;
+        await reward(first, `${stop.on} got on! 🎫`, `${stop.on} ${stop.on === 1 ? 'person' : 'people'} got on the bus!`);
+      } else {
+        const first = await ask('How many people got off the bus?', stop.off, null,
+          () => countAloud(peopleTargets(game.alighted)));
+        await reward(first, `${stop.off} got off! 👋`, `${stop.off} ${stop.off === 1 ? 'person' : 'people'} got off the bus!`);
+        // now they wave goodbye and walk away
+        for (const p of game.alighted) {
+          p.front = false; p.wave = false;
+          walk(p, [{ x: W + 140, y: p.y }], 150).then(() => { p.remove = true; });
+        }
+      }
     } else {
       const first = await ask('How many passengers are on the bus now?', after,
         'How many passengers are on the bus now? Count the people in the windows!', () => countAloud(busTargets()));
@@ -744,7 +784,9 @@
     p.fading = true;
     Sound.beep();
     const slot = freeSlot();
-    game.onboard.push({ look: p.look, slot, appear: 0, leaving: false });
+    const pas = { look: p.look, slot, appear: 0, leaving: false };
+    game.onboard.push(pas);
+    if (game.boarded) game.boarded.push(pas);
     addPop(DOOR_IN, 540, n);
     Sound.pop(n);
     say(String(n), true);
@@ -777,7 +819,7 @@
 
   function resetScene(keepCruise) {
     game.people = []; game.onboard = []; game.labels = []; game.pops = [];
-    game.alighted = [];
+    game.alighted = []; game.glow = null;
     game.parts = game.parts.filter((p) => p.kind === 'confetti');
     game.signs = [];
     game.distTarget = null; game.arriveResolve = null; game.bellAt = null;
@@ -1234,6 +1276,11 @@
         ctx.save();
         ctx.translate(sx, 430 + jig + (1 - p.appear) * 20);
         ctx.scale(sc, sc);
+        if (game.glow && game.glow.includes(p)) {
+          ctx.globalAlpha = 0.8 + Math.sin(game.time * 6) * 0.2;
+          rr(-24, -30, 48, 90, 14, '#ffe14d');
+          ctx.globalAlpha = 1;
+        }
         rr(-16, 13, 32, 34, 11, p.look.shirt);
         drawHead(p.look, false);
         ctx.restore();
@@ -1242,6 +1289,18 @@
       ctx.beginPath(); ctx.moveTo(a + 8, BUS.winTop); ctx.lineTo(a + 24, BUS.winTop); ctx.lineTo(a + 4, BUS.winBot); ctx.lineTo(a - 12, BUS.winBot); ctx.fill();
       ctx.restore();
     });
+
+    // bouncing arrows pointing at the passengers who just got on
+    if (game.glow) {
+      for (const p of game.glow) {
+        const x = SLOTS[p.slot], y = 330 - Math.abs(Math.sin(game.time * 5)) * 12;
+        ctx.beginPath();
+        ctx.moveTo(x - 6, y - 18); ctx.lineTo(x + 6, y - 18); ctx.lineTo(x + 6, y); ctx.lineTo(x + 16, y);
+        ctx.lineTo(x, y + 22); ctx.lineTo(x - 16, y); ctx.lineTo(x - 6, y); ctx.closePath();
+        ctx.fillStyle = '#ffcf3f'; ctx.fill();
+        ctx.strokeStyle = '#b07d00'; ctx.lineWidth = 2; ctx.stroke();
+      }
+    }
 
     // doors
     DOORS.forEach((d, i) => drawDoor(d, game.doors[i], i === 0 ? 'in' : 'out'));
