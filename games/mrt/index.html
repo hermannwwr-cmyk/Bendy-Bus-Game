@@ -2323,6 +2323,8 @@
         hubT.left = d.left == null || !isFinite(+d.left) ? Infinity : +d.left;
         hubT.used = +d.used || 0;
         showClocks();
+        // time used up while still choosing on the start screen: no ride to finish, so sleep now
+        if (hubT.limit && hubT.left <= 0 && document.body.dataset.screen === "home") hubSleep();
       } else if (d.hub === "pause") {
         music.stop(); try { speechSynthesis.cancel(); } catch {}
       }
