@@ -329,6 +329,9 @@
   /* start screen, top right: today's play time left; tapping it opens the grown-ups' settings */
   .home-clock { position: fixed; z-index: 6; top: calc(8px + env(safe-area-inset-top, 0px)); right: calc(8px + env(safe-area-inset-right, 0px)); border: 0; background: rgba(255,255,255,.85); color: var(--ink); border-radius: 999px; padding: 5px 12px; font: inherit; font-size: 15px; font-weight: 800; box-shadow: 0 2px 0 rgba(0,0,0,.1); }
   body:not([data-screen="home"]) .home-clock { display: none; }
+  /* hub mode (inside the all-in-one app): the chip becomes a big "back to all games" button */
+  .home-clock.hub-exit { display: flex; align-items: center; gap: 6px; min-height: 56px; min-width: 56px; padding: 6px 18px 6px 12px; font-size: 18px; }
+  .home-clock.hub-exit b { font-size: 28px; line-height: 1; }
   .stars { font-size: 20px; background: var(--card); border-radius: 14px; padding: 10px 12px; box-shadow: var(--shadow); white-space: nowrap; }
 
   /* Route strip: the line's first and last stations named at the two ends, and a close-up "window" of big dots
@@ -800,8 +803,16 @@
   // { day, used (seconds), extra (minutes added today) }. It's saved every few seconds, so reloading or
   // reopening the game doesn't reset it, and a new day starts fresh. With storage blocked it lasts for this visit.
   const dayKey = () => new Date().toDateString();
+  // Hub mode: inside the all-in-one app (?hub=1 in an iframe). The hub owns play time, its settings and
+  // the sleep screen; the game takes its time from the hub's {hub:'time'} messages (no limit until one comes).
+  const HUB = /[?&]hub=1\b/.test(location.search) && window.parent !== window;
+  const toHub = msg => { try { window.parent.postMessage(msg, "*"); } catch {} };
+  const hubT = { limit: 0, left: Infinity, used: 0 };
+  let hubSlept = false;
+  const hubSleep = () => { if (!hubSlept) { hubSlept = true; toHub({ hub: "sleep" }); } }; // once: the bedtime ending is done
+  if (HUB) toHub({ hub: "hello", game: "mrt" });
   const playTime = {
-    lim: +store.get("mrtLimit", 20) || 0, // 20 minutes a day unless a grown-up changes it
+    lim: HUB ? 0 : +store.get("mrtLimit", 20) || 0, // 20 minutes a day unless a grown-up changes it
     mem: null,
     limit() { return this.lim; },
     setLimit(m) { this.lim = m; store.set("mrtLimit", m); },
@@ -811,6 +822,13 @@
     left() { return this.total() - this.rec().used; },
     add(sec) { const r = this.rec(); r.used += sec; this.save(r); },
   };
+  if (HUB) Object.assign(playTime, { // no local counting or storage: the hub's numbers instead
+    limit() { return hubT.limit; },
+    setLimit() {}, save() {}, add() {},
+    rec() { return { day: dayKey(), used: hubT.used, extra: 0 }; },
+    total() { return hubT.limit ? Math.max(1, hubT.used + Math.max(0, hubT.left)) : Infinity; },
+    left() { return hubT.limit ? hubT.left : Infinity; },
+  });
   let soundOn = store.get("mrtSound", true);
 
   // ---- state ----
@@ -2108,11 +2126,13 @@
       show("end");
       sfx.chime();
       say(`Great riding today! You got ${S.stars} stars. The train is going to sleep now. See you tomorrow!`);
+      if (HUB) setTimeout(hubSleep, 7000); // let the goodnight be seen and heard, then the hub's sleep scene
       return;
     }
     if (!S.line.stations[S.at + S.dir]) { // reached the end of a line: earn its badge
       badges[S.line.id] = Math.max(badges[S.line.id] || 0, S.stars);
       store.set("mrtBadges", badges);
+      if (HUB) toHub({ hub: "stars", count: Object.keys(badges).length });
     }
     $("endTitle").textContent = `You reached ${last}!`;
     const found = S.surprises ? ` You found ${S.surprises} surprise${S.surprises > 1 ? "s" : ""}! 🎁` : "";
@@ -2227,6 +2247,7 @@
   function showClocks() {
     const on = !!playTime.limit(), left = playTime.left();
     $("clock").hidden = !on;
+    if (HUB) { if (on) $("clock").textContent = `⏱️ ${mmss(left)}`; return; } // #homeClock is the "all games" button
     if (!on) { $("homeClock").textContent = "⏱️ No limit"; return; }
     $("clock").textContent = `⏱️ ${mmss(left)}`;
     $("homeClock").textContent = `⏱️ ${Math.max(0, Math.ceil(left / 60))} min`;
@@ -2239,12 +2260,14 @@
   }, 1000);
   showClocks();
   function showSleep() {
+    if (HUB) return hubSleep(); // the hub shows the sleep scene
     try { speechSynthesis.cancel(); } catch {}
     $("sleep").hidden = false;
   }
   // A sum a 6-year-old can't do yet, typed on the number keypad, keeps the settings for grown-ups.
   let gateAns = 0, gateThen = null;
   function openGate(then) {
+    if (HUB) return; // the hub owns the grown-up settings
     const a = rand(6, 9), b = rand(6, 9);
     gateAns = a * b; gateThen = then;
     $("gateQ").textContent = `What is ${a} × ${b}?`;
@@ -2284,6 +2307,27 @@
   $("homeClock").onclick = () => openGate(openParent);
   $("sleepParent").onclick = () => openGate(openParent);
   if (playTime.left() <= 0) showSleep(); // reopened after today's time ran out
+  // ---- hub mode: "back to all games", time from the hub, bedtime handed to the hub ----
+  if (HUB) {
+    const hc = $("homeClock");
+    hc.classList.add("hub-exit");
+    hc.innerHTML = "<b>🏠</b>All games";
+    hc.setAttribute("aria-label", "Back to all games");
+    hc.onclick = () => toHub({ hub: "exit" });
+    toHub({ hub: "stars", count: Object.keys(badges).length });
+    addEventListener("message", e => {
+      const d = e.data;
+      if (e.source !== window.parent || !d || typeof d !== "object" || typeof d.hub !== "string") return;
+      if (d.hub === "time") {
+        hubT.limit = +d.limit || 0;
+        hubT.left = d.left == null || !isFinite(+d.left) ? Infinity : +d.left;
+        hubT.used = +d.used || 0;
+        showClocks();
+      } else if (d.hub === "pause") {
+        music.stop(); try { speechSynthesis.cancel(); } catch {}
+      }
+    });
+  }
   $("otherBtn").onclick = () => { restoreHome(); renderLines(); show("home"); pullInStartTrain(); };
   $("homeBtn").onclick = () => { S.gen++; try { speechSynthesis.cancel(); } catch {} restoreHome(); renderLines(); show("home"); pullInStartTrain(); };
   $("sayBtn").onclick = speakQ;
