@@ -27,6 +27,19 @@
   const easeOutBack = (t) => { const c = 1.7; return 1 + (c + 1) * Math.pow(t - 1, 3) + c * Math.pow(t - 1, 2); };
   const shuffle = (a) => { for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; };
 
+  // ---------- hub mode (inside the all-in-one app; see HUB-SPEC.md) ----------
+  // The hub owns the grown-up play-time limit and sends us the time left.
+  // Without ?hub=1 none of this does anything.
+  const HUB = /[?&]hub=1\b/.test(location.search) && window.parent !== window;
+  const hub = { limit: 0, left: null, share: 0, warned: false, warnPending: false, slept: false, paused: false };
+  function hubPost(m) { try { window.parent.postMessage(m, '*'); } catch (e) { /* ignore */ } }
+  const timeUp = () => HUB && hub.limit > 0 && hub.left != null && hub.left <= 0;
+  if (HUB) {
+    document.documentElement.classList.add('hub');
+    window.addEventListener('message', (e) => onHubMessage(e.data));
+    hubPost({ hub: 'hello', game: 'bus' });
+  }
+
   function resize() {
     const vw = window.innerWidth, vh = window.innerHeight;
     const s = Math.min(vw / W, vh / H);
@@ -80,6 +93,7 @@
     musicOn: store.get('music', true),
     lastEngine: 0,
     init() {
+      if (hub.paused) return;
       if (this.ac) { if (this.ac.state === 'suspended') this.ac.resume(); return; }
       const AC = window.AudioContext || window.webkitAudioContext;
       if (!AC) return;
@@ -282,13 +296,13 @@
     stop() { if (this.ok) try { speechSynthesis.cancel(); } catch (e) { /* ignore */ } },
   };
   if (Voice.ok) { Voice.pick(); speechSynthesis.onvoiceschanged = () => Voice.pick(); }
-  const say = (t, i) => Voice.say(t, i);
+  const say = (t, i) => { if (!hub.paused) Voice.say(t, i); };
 
   ['pointerdown', 'touchend', 'keydown'].forEach((t) => document.addEventListener(t, () => Sound.init(), { passive: true }));
 
   document.addEventListener('visibilitychange', () => {
     if (!Sound.ac) return;
-    if (document.hidden) { Sound.ac.suspend(); Voice.stop(); } else Sound.ac.resume();
+    if (document.hidden) { Sound.ac.suspend(); Voice.stop(); } else if (!hub.paused) Sound.ac.resume();
   });
 
   // ====================================================================
@@ -425,10 +439,11 @@
     if (game.map.open) hideMap(); else showMap(0);
   });
   document.querySelectorAll('.level').forEach((b) => b.addEventListener('click', () => {
+    if (timeUp()) { hubSleep(); return; }
     Sound.init(); Sound.honk();
     startRoute(b.dataset.level);
   }));
-  $('btnAgain').addEventListener('click', () => { Sound.init(); Sound.honk(); startRoute(game.levelKey); });
+  $('btnAgain').addEventListener('click', () => { if (timeUp()) { hubSleep(); return; } Sound.init(); Sound.honk(); startRoute(game.levelKey); });
   $('btnLevels').addEventListener('click', () => { Sound.pop(2); toTitle(); });
   canvas.addEventListener('pointerdown', (e) => {
     if (game.map.open) { hideMap(); return; }
@@ -614,9 +629,13 @@
     try {
       banner(`Bus ${ROUTE_NO} is leaving! 🚌💨`, 2200);
       say("Let's go! All aboard Bus " + ROUTE_NO + '!', true);
+      if (HUB) hubWarnNow();
       for (let i = 0; i < game.stops.length; i++) {
         game.stopIndex = i;
         await doStop(game.stops[i], i);
+        // Bedtime (hub mode): the stop is finished, so the bus parks for the night
+        if (timeUp()) { await goodnight(); return; }
+        if (HUB) hubWarnNow();
       }
       await finale();
     } catch (e) {
@@ -842,6 +861,7 @@
     ui.btnHome.classList.add('hidden');
     ui.btnMap.classList.add('hidden');
     hideMap();
+    if (timeUp()) hubSleep();
   }
 
   // ====================================================================
@@ -872,7 +892,8 @@
     }
     game.wheelAng -= (game.v * dt) / 30;
     game.bellFlash = Math.max(0, game.bellFlash - dt);
-    Sound.setEngine(game.v / VMAX, true);
+    Sound.setEngine(game.v / VMAX, nightT < 0);
+    if (nightT >= 0) nightT += dt;
 
     // --- doors & kneeling ---
     for (let i = 0; i < 3; i++) game.doors[i] += clamp(game.doorT[i] - game.doors[i], -2.2 * dt, 2.2 * dt);
@@ -938,6 +959,7 @@
     ['#fbe7a1', '#e09f3e'], ['#e2d4f0', '#7e57c2'], ['#f9d0b0', '#ef8354'], ['#d9f2ef', '#2a9d8f']];
 
   function drawSky() {
+    if (HUB) { const p = skyPhase(); if (p > 0) { drawDuskSky(p); return; } }
     const g = ctx.createLinearGradient(0, 0, 0, 440);
     g.addColorStop(0, '#5db7f0'); g.addColorStop(1, '#d4f0ff');
     ctx.fillStyle = g; ctx.fillRect(0, 0, W, 440);
@@ -2170,9 +2192,224 @@
     drawFX();
     for (const s of game.signs) drawSign(s);
     [...game.people].sort((a, b) => a.y - b.y).forEach(drawPerson);
+    if (HUB) drawNight();
     drawOverlays();
     drawMap();
     drawRoute();
+  }
+
+  // ====================================================================
+  // Hub mode: play clock, evening sky, bedtime (only with ?hub=1)
+  // ====================================================================
+  let nightT = -1;            // seconds into the goodnight moment, -1 = not started
+  let clockEl = null;
+  if (HUB) {
+    clockEl = document.createElement('div');
+    clockEl.id = 'playClock';
+    clockEl.className = 'hidden';
+    ui.hud.appendChild(clockEl);
+    // Big "back to all games" button on the title screen
+    const exit = document.createElement('button');
+    exit.id = 'hubExit';
+    exit.title = 'All games';
+    exit.setAttribute('aria-label', 'Back to all games');
+    exit.innerHTML = '<span>🏠</span>';
+    exit.addEventListener('click', () => { Sound.pop(2); Voice.stop(); hubPost({ hub: 'exit' }); });
+    ui.title.appendChild(exit);
+  }
+
+  function onHubMessage(d) {
+    if (!d || typeof d !== 'object' || typeof d.hub !== 'string') return;
+    if (d.hub === 'time') {
+      hub.limit = Math.max(0, +d.limit || 0);
+      hub.left = hub.limit > 0 && d.left != null && isFinite(+d.left) ? Math.max(0, Math.floor(+d.left)) : null;
+      hub.share = hub.limit > 0 ? clamp(+d.share || 0, 0, 1) : 0;
+      hubTick();
+    } else if (d.hub === 'pause') hubPause();
+  }
+
+  function hubTick() {
+    const on = hub.limit > 0 && hub.left != null;
+    if (clockEl) {
+      clockEl.classList.toggle('hidden', !on);
+      if (on) {
+        const l = hub.left, late = l <= 60;
+        clockEl.textContent = `${late ? '🌙' : '⏱️'} ${Math.floor(l / 60)}:${String(l % 60).padStart(2, '0')}`;
+        clockEl.classList.toggle('late', late);
+      }
+    }
+    // a grown-up added time: forget the old warning
+    if (!on || hub.left > 60) { hub.warned = false; hub.warnPending = false; }
+    else if (hub.left > 0 && !hub.warned) { hub.warned = true; hub.warnPending = true; }
+    // Nothing is going on (title or end screen): straight to sleep
+    if (timeUp() && (game.mode === 'title' || !ui.end.classList.contains('hidden'))) hubSleep();
+  }
+
+  // The last-minute warning waits for a calm moment between stops, so it
+  // never talks over the counting.
+  function hubWarnNow() {
+    if (!hub.warnPending || timeUp()) return;
+    hub.warnPending = false;
+    banner('🌙 The bus is getting sleepy!', 3000);
+    say('The bus is getting sleepy. Nearly time for bed!');
+  }
+
+  function hubSleep() {
+    if (!HUB || hub.slept) return;
+    hub.slept = true;
+    hubPost({ hub: 'sleep' });
+  }
+
+  function hubPause() {
+    hub.paused = true;
+    Voice.stop();
+    clearInterval(Music.timer); Music.timer = null;
+    if (Sound.ac) { try { Sound.ac.suspend(); } catch (e) { /* ignore */ } }
+  }
+
+  // Goodnight: the bus is parked at the stop it just finished. The sky turns to
+  // night, the headlights glow and then dim, the bus snores a little, and then
+  // we tell the hub (which shows everyone asleep).
+  async function goodnight() {
+    game.mode = 'night';
+    nightT = 0;
+    hideMap(); hideBanner();
+    ui.question.classList.add('hidden');
+    ui.hud.classList.add('hidden');
+    ui.btnHome.classList.add('hidden');
+    ui.btnMap.classList.add('hidden');
+    game.glow = null; game.labels = [];
+    setDoors(0, 0, 0);
+    game.cruise = 0;
+    if (Sound.mus) Sound.mus.gain.setTargetAtTime(0, Sound.ac.currentTime, 0.6);
+    await sleep(700);
+    banner('Goodnight, bus! 🌙', 0);
+    say('Goodnight, bus! Sleep tight.', true);
+    [76, 72, 67, 64].forEach((m, i) => Sound.tone(midi(m), 0.9, { type: 'sine', vol: 0.07, when: i * 0.45 }));
+    await sleep(2300);
+    Sound.tone(midi(55), 0.25, { type: 'triangle', vol: 0.05 });   // headlights click off
+    await sleep(2800);
+    hubSleep();
+  }
+
+  // 0 = bright morning ... 1 = night. Follows the share of today's time used,
+  // and goes to night during the goodnight moment.
+  function skyPhase() {
+    const p = hub.limit > 0 ? hub.share : 0;
+    return nightT >= 0 ? lerp(p, 1, clamp(nightT / 1.6, 0, 1)) : p;
+  }
+  const smooth = (a, b, x) => { const t = clamp((x - a) / (b - a), 0, 1); return t * t * (3 - 2 * t); };
+  function mixHex(a, b, t) {
+    const pa = parseInt(a.slice(1), 16), pb = parseInt(b.slice(1), 16);
+    const c = (sh) => Math.round(lerp((pa >> sh) & 255, (pb >> sh) & 255, t));
+    return `rgb(${c(16)},${c(8)},${c(0)})`;
+  }
+  const SKY_KEYS = [
+    [0, '#5db7f0', '#d4f0ff'], [0.5, '#5db7f0', '#d4f0ff'], [0.68, '#6aa6e6', '#ffe2b4'],
+    [0.82, '#7a70c2', '#ffae7e'], [0.92, '#2f3c7c', '#8b6ca8'], [1, '#1b2352', '#40508e'],
+  ];
+  function skyAt(p) {
+    let i = 0;
+    while (i < SKY_KEYS.length - 2 && p > SKY_KEYS[i + 1][0]) i++;
+    const [p0, t0, b0] = SKY_KEYS[i], [p1, t1, b1] = SKY_KEYS[i + 1];
+    const t = clamp((p - p0) / (p1 - p0), 0, 1);
+    return [mixHex(t0, t1, t), mixHex(b0, b1, t)];
+  }
+
+  function drawDuskSky(p) {
+    const [top, bot] = skyAt(p);
+    const g = ctx.createLinearGradient(0, 0, 0, 440);
+    g.addColorStop(0, top); g.addColorStop(1, bot);
+    ctx.fillStyle = g; ctx.fillRect(0, 0, W, 440);
+    // stars come out
+    const st = smooth(0.84, 1, p);
+    if (st > 0) {
+      for (let i = 0; i < 40; i++) {
+        const x = hash(i + 300) * W, y = 12 + hash(i + 400) * 300;
+        ctx.globalAlpha = st * (0.55 + 0.45 * Math.sin(game.time * 2 + i * 1.7));
+        if (i % 6 === 0) drawStar(x, y, 6, '#fff3b0'); else circle(x, y, 1.6 + hash(i + 500) * 1.4, '#fffbe6');
+      }
+      ctx.globalAlpha = 1;
+    }
+    // the sun sets behind the flats, getting warmer as it goes
+    const set = smooth(0.55, 0.9, p);
+    const sx = 168, sy = 150 + set * 360;
+    if (sy < 520) {
+      ctx.save(); ctx.translate(sx, sy); ctx.rotate(game.time * 0.25);
+      ctx.strokeStyle = mixHex('#ffd23f', '#ff9a3c', set); ctx.lineWidth = 7; ctx.lineCap = 'round';
+      for (let i = 0; i < 12; i++) { ctx.rotate(Math.PI / 6); ctx.beginPath(); ctx.moveTo(54, 0); ctx.lineTo(68 + (i % 2) * 6, 0); ctx.stroke(); }
+      ctx.restore();
+      circle(sx, sy, 46, mixHex('#ffc93c', '#ff8a3c', set)); circle(sx, sy, 40, mixHex('#ffe066', '#ffb35c', set));
+      circle(sx - 13, sy - 7, 4.5, '#7a4a00'); circle(sx + 13, sy - 7, 4.5, '#7a4a00');
+      circle(sx - 22, sy + 6, 6, 'rgba(255,120,80,.35)'); circle(sx + 22, sy + 6, 6, 'rgba(255,120,80,.35)');
+      ctx.strokeStyle = '#7a4a00'; ctx.lineWidth = 3.5; ctx.beginPath(); ctx.arc(sx, sy + 4, 13, 0.15 * Math.PI, 0.85 * Math.PI); ctx.stroke();
+    }
+    // clouds turn lilac
+    const night = smooth(0.7, 1, p);
+    for (let i = 0; i < 6; i++) {
+      const x = mod(i * 260 + game.dist * 0.05 + game.time * 10, W + 320) - 160;
+      const y = 50 + hash(i + 5) * 150, s = 0.7 + hash(i + 9) * 0.6;
+      ctx.fillStyle = mixHex('#ffffff', '#b7aede', night);
+      ctx.globalAlpha = 0.93 - night * 0.3;
+      [[0, 0, 28], [26, -14, 32], [58, 0, 26], [28, 8, 26]].forEach(([dx, dy, r]) => { ctx.beginPath(); ctx.arc(x + dx * s, y + dy * s, r * s, 0, 7); ctx.fill(); });
+    }
+    ctx.globalAlpha = 1;
+    // a sleepy crescent moon rises
+    const mo = smooth(0.74, 0.94, p);
+    if (mo > 0) {
+      const mx = 1010, my = 160 - mo * 30;
+      ctx.globalAlpha = mo;
+      circle(mx, my, 54, 'rgba(255,246,200,.16)');
+      ctx.save();
+      ctx.beginPath(); ctx.rect(0, 0, W, 440); ctx.arc(mx + 15, my - 9, 29, 0, Math.PI * 2, true); ctx.clip('evenodd');
+      circle(mx, my, 34, '#fff3b8');
+      ctx.restore();
+      ctx.globalAlpha = 1;
+    }
+  }
+
+  // Evening glow and night tint over the street, then the bus's lights on top.
+  function drawNight() {
+    const p = skyPhase();
+    if (p <= 0.55) return;
+    const warm = 0.12 * smooth(0.6, 0.8, p) * (1 - smooth(0.88, 1, p));
+    const dark = 0.36 * smooth(0.8, 1, p);
+    if (warm > 0.003) {
+      const g = ctx.createLinearGradient(0, 80, 0, 360);
+      g.addColorStop(0, 'rgba(255,150,70,0)'); g.addColorStop(1, `rgba(255,150,70,${warm})`);
+      ctx.fillStyle = g; ctx.fillRect(0, 80, W, H - 80);
+    }
+    if (dark > 0.003) {
+      // fainter up in the (already dark) sky, full over the flats and street
+      const g = ctx.createLinearGradient(0, 0, 0, 260);
+      g.addColorStop(0, `rgba(18,24,72,${dark * 0.25})`); g.addColorStop(1, `rgba(18,24,72,${dark})`);
+      ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+    }
+    // headlights: on as it gets dark, dimmed when the bus goes to sleep
+    const lit = smooth(0.74, 0.9, p) * (nightT >= 0 ? 1 - clamp((nightT - 3) / 0.8, 0, 1) : 1);
+    const hx = BUS.front + 8, hy = 546 + game.kneel;
+    if (lit > 0.01) {
+      const beam = ctx.createLinearGradient(hx, 0, hx - 200, 0);
+      beam.addColorStop(0, `rgba(255,240,170,${0.42 * lit})`); beam.addColorStop(1, 'rgba(255,240,170,0)');
+      ctx.fillStyle = beam;
+      ctx.beginPath(); ctx.moveTo(hx, hy - 7); ctx.lineTo(hx - 200, hy - 34); ctx.lineTo(hx - 200, hy + 46); ctx.lineTo(hx, hy + 7); ctx.closePath(); ctx.fill();
+      const glow = ctx.createRadialGradient(hx, hy, 2, hx, hy, 30);
+      glow.addColorStop(0, `rgba(255,248,200,${0.9 * lit})`); glow.addColorStop(1, 'rgba(255,248,200,0)');
+      ctx.fillStyle = glow; ctx.beginPath(); ctx.arc(hx, hy, 30, 0, 7); ctx.fill();
+      const rg = ctx.createRadialGradient(BUS.rear - 4, 547 + game.kneel, 1, BUS.rear - 4, 547 + game.kneel, 22);
+      rg.addColorStop(0, `rgba(255,80,60,${0.6 * lit})`); rg.addColorStop(1, 'rgba(255,80,60,0)');
+      ctx.fillStyle = rg; ctx.beginPath(); ctx.arc(BUS.rear - 4, 547 + game.kneel, 22, 0, 7); ctx.fill();
+    }
+    // sleepy Zzz floating up from the front of the bus
+    if (nightT > 3.4) {
+      for (let k = 0; k < 3; k++) {
+        const t = mod(nightT - 3.4 - k * 0.7, 2.1);
+        if (nightT - 3.4 < k * 0.7) continue;
+        ctx.globalAlpha = Math.min(1, t * 3) * (1 - t / 2.1);
+        txt('z', 236 + t * 34 + Math.sin(t * 4 + k) * 6, 352 - t * 80, 30 + t * 18, '#fff6c7');
+      }
+      ctx.globalAlpha = 1;
+    }
   }
 
   // ====================================================================
