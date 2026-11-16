@@ -5509,6 +5509,7 @@
         hubTime.share = Number(m.share) || 0;
         // more time was given before the app closed the frame: Grizzly wakes up
         if (scene === S.sleep && playTime.left() > 0) { hubSlept = false; go('menu'); }
+        hubBackdrop();
       } else if (m.hub === 'pause') {
         muted = true;
         if (window.speechSynthesis) try { window.speechSynthesis.cancel(); } catch (err) { /* ignore */ }
@@ -5517,23 +5518,42 @@
     hubPost({ hub: 'hello', game: 'grizzly' });
     hubStars();
   }
-  // "Back to all games": a little storybook cottage on a round paper button, where the gear is.
+  // "Back to all games": the all-in-one app's shared button (the same in all three games): a round
+  // cream paper button with a 2 x 2 grid of little coloured cards, bobbing gently so kids notice it.
+  const HUB_CARDS = ['#f26b5b', '#f5b83d', '#5cb85c', '#4fa3e0']; // top-left, top-right, bottom-left, bottom-right
   function drawHubExitButton(x, y) {
-    const r = 29, pressed = hot(x - 32, y - 32, 64, 64) && pointer.down ? 3 : 0;
-    circle(x, y + 8, r, P.shadow);
-    circle(x, y + 5, r, dark(P.cream, 0.34));
-    circle(x, y + pressed, r, P.cream);
-    ctx.save(); ctx.translate(x, y + pressed + 1);
-    solid(rr(6, -19, 6, 12, 1.5), P.woodDark, { depth: 0, rim: 2 });            // chimney
-    solid(rr(-13, -5, 26, 21, 3), P.honeyLight, { depth: 3, rim: 2 });          // walls
-    const roof = new Path2D();
-    roof.moveTo(0, -20); roof.lineTo(20, -2); roof.quadraticCurveTo(20, 1, 17, 1);
-    roof.lineTo(-17, 1); roof.quadraticCurveTo(-20, 1, -20, -2); roof.closePath();
-    solid(roof, P.coral, { depth: 3, rim: 2 });
-    solid(rr(-4.5, 4, 9, 12, 4.5), P.teal, { depth: 0, rim: 2 });              // door
-    circle(2, 10.5, 1.2, P.honeyLight);
+    const d = 64, r = d / 2, pressed = hot(x - r, y - r, d, d) && pointer.down ? 3 : 0;
+    const bob = Math.sin(time * Math.PI) * 2;                     // +-2 px over 2 s
+    circle(x, y + 6 + bob * 0.5, r, P.shadow);
+    ctx.save(); ctx.translate(x, y + bob + pressed);
+    const face = ell(0, 0, r, r);
+    ctx.fillStyle = '#fff6e0'; ctx.fill(face);
+    shadeEdge(face, 5);
+    rimOf(face, '#d9b57f', 2.5);
+    const grid = d * 0.46, gap = d * 0.12, card = (grid - gap) / 2;
+    HUB_CARDS.forEach((c, i) => {
+      const cx = -grid / 2 + (i % 2) * (card + gap), cy = -grid / 2 + Math.floor(i / 2) * (card + gap);
+      solid(rr(cx, cy, card, card, card * 0.22), c, { depth: 0, rim: 1.5, rimColor: dark(c, 0.25) });
+    });
     ctx.restore();
-    buttons.push({ x: x - 32, y: y - 32, w: 64, h: 64, action: () => hubPost({ hub: 'exit' }) });
+    buttons.push({ x: x - r, y: y - r, w: d, h: d, action: () => hubPost({ hub: 'exit' }) });
+  }
+  // The page around the 960 x 540 picture (the bars on 4:3 iPads): sky above, meadow below, both
+  // following the sky clock, instead of flat dark green, so the world seems to carry on.
+  const HUB_MEADOW = [[0, '#6cc45c'], [0.55, '#6cc45c'], [0.8, '#7dbd57'], [1, '#457b50']]; // the canvas's bottom edge
+  let hubBackdropKey = '';
+  function hubBackdrop() {
+    if (!HUB) return;
+    const ph = Math.round(playTime.share() * 100) / 100;
+    if (String(ph) === hubBackdropKey) return;
+    hubBackdropKey = String(ph);
+    let i = 0;
+    while (i < HUB_MEADOW.length - 2 && ph > HUB_MEADOW[i + 1][0]) i++;
+    const [p0, c0] = HUB_MEADOW[i], [p1, c1] = HUB_MEADOW[i + 1];
+    const sky = skyAt(ph)[0], meadow = mixColor(c0, c1, clamp01((ph - p0) / (p1 - p0)));
+    const bg = `linear-gradient(to bottom, ${sky} 0%, ${sky} 50%, ${meadow} 50%, ${meadow} 100%)`;
+    document.documentElement.style.background = document.body.style.background = bg;
+    canvas.style.borderRadius = '0'; canvas.style.boxShadow = 'none';
   }
 
   const playTime = HUB ? hubPlayTime() : (() => {
@@ -5837,6 +5857,7 @@
   }
 
   go(playTime.left() <= 0 ? 'sleep' : 'menu');
+  hubBackdrop();
   let last = performance.now();
   function frame(now) {
     const dt = Math.min(0.05, (now - last) / 1000);
