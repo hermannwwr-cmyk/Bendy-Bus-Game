@@ -31,8 +31,19 @@
   // The hub owns the grown-up play-time limit and sends us the time left.
   // Without ?hub=1 none of this does anything.
   const HUB = /[?&]hub=1\b/.test(location.search) && window.parent !== window;
-  const hub = { limit: 0, left: null, share: 0, warned: false, warnPending: false, slept: false, paused: false };
+  const hub = { limit: 0, left: null, share: 0, warned: false, warnPending: false, slept: false, paused: false, held: false };
   function hubPost(m) { try { window.parent.postMessage(m, '*'); } catch (e) { /* ignore */ } }
+  // Timers that stand still while the hub holds the game (the "turn me sideways" card covers it).
+  // Without a hold they are plain setTimeouts.
+  const holdTimers = new Set();
+  function later(fn, ms) {
+    const t = { ms: Math.max(0, ms || 0), start: performance.now(), id: 0 };
+    t.fire = () => { holdTimers.delete(t); fn(); };
+    holdTimers.add(t);
+    if (!hub.held) t.id = setTimeout(t.fire, t.ms);
+    return t;
+  }
+  function cancelLater(t) { if (t) { clearTimeout(t.id); holdTimers.delete(t); } }
   const timeUp = () => HUB && hub.limit > 0 && hub.left != null && hub.left <= 0;
   if (HUB) {
     document.documentElement.classList.add('hub');
@@ -93,7 +104,7 @@
     musicOn: store.get('music', true),
     lastEngine: 0,
     init() {
-      if (hub.paused) return;
+      if (hub.paused || hub.held) return;
       if (this.ac) { if (this.ac.state === 'suspended') this.ac.resume(); return; }
       const AC = window.AudioContext || window.webkitAudioContext;
       if (!AC) return;
@@ -296,13 +307,14 @@
     stop() { if (this.ok) try { speechSynthesis.cancel(); } catch (e) { /* ignore */ } },
   };
   if (Voice.ok) { Voice.pick(); speechSynthesis.onvoiceschanged = () => Voice.pick(); }
-  const say = (t, i) => { if (!hub.paused) Voice.say(t, i); };
+  let lastSaid = '';
+  const say = (t, i) => { if (!hub.paused && !hub.held) { lastSaid = t; Voice.say(t, i); } };
 
   ['pointerdown', 'touchend', 'keydown'].forEach((t) => document.addEventListener(t, () => Sound.init(), { passive: true }));
 
   document.addEventListener('visibilitychange', () => {
     if (!Sound.ac) return;
-    if (document.hidden) { Sound.ac.suspend(); Voice.stop(); } else if (!hub.paused) Sound.ac.resume();
+    if (document.hidden) { Sound.ac.suspend(); Voice.stop(); } else if (!hub.paused && !hub.held) Sound.ac.resume();
   });
 
   // ====================================================================
@@ -394,7 +406,7 @@
   let run = null;
   function sleep(ms) {
     const r = run;
-    return new Promise((res, rej) => setTimeout(() => (r && !r.aborted ? res() : rej(new Abort())), ms));
+    return new Promise((res, rej) => later(() => (r && !r.aborted ? res() : rej(new Abort())), ms));
   }
   function guard(p) {
     const r = run;
@@ -412,15 +424,15 @@
   };
   let bannerTimer = null;
   function banner(text, ms = 2500, cls = '') {
-    clearTimeout(bannerTimer);
+    cancelLater(bannerTimer);
     const b = ui.banner;
     b.className = cls;
     b.textContent = text;
     // restart animation
     void b.offsetWidth;
-    if (ms > 0) bannerTimer = setTimeout(() => b.classList.add('hidden'), ms);
+    if (ms > 0) bannerTimer = later(() => b.classList.add('hidden'), ms);
   }
-  function hideBanner() { clearTimeout(bannerTimer); ui.banner.classList.add('hidden'); }
+  function hideBanner() { cancelLater(bannerTimer); ui.banner.classList.add('hidden'); }
   function updateStars(bump) {
     ui.starCount.textContent = game.stars;
     if (bump) { ui.stars.classList.remove('bump'); void ui.stars.offsetWidth; ui.stars.classList.add('bump'); }
@@ -482,7 +494,7 @@
             busy = true;
             b.classList.add('right');
             Sound.correct();
-            setTimeout(() => { ui.question.classList.add('hidden'); resolve(firstTry); }, 750);
+            later(() => { ui.question.classList.add('hidden'); resolve(firstTry); }, 750);
           } else {
             busy = true; firstTry = false;
             b.classList.add('wrong'); b.disabled = true;
@@ -499,7 +511,10 @@
       hideMap();
       ui.question.classList.remove('hidden');
       void ui.question.offsetWidth;
-      say(speakText || text, true);
+      game.askLine = speakText || text;
+      // hub mode: a last-minute warning not given yet goes first (the counting is over by now)
+      const warned = HUB && hubWarnNow();
+      say(speakText || text, !warned);
     }));
   }
 
@@ -660,7 +675,7 @@
     say(`Next stop, ${stop.name}!`);
     await arrive;
     Sound.hiss();
-    setTimeout(() => Sound.ambient(stop.key), 500);
+    later(() => Sound.ambient(stop.key), 500);
     await sleep(700);
 
     // Warm-up question at the first stop: count the people waiting
@@ -829,7 +844,7 @@
       s.style.animationDelay = (0.15 * i) + 's';
       es.appendChild(s);
     }
-    for (let i = 0; i < total; i++) setTimeout(() => Sound.pop(i + 1), 150 * i + 100);
+    for (let i = 0; i < total; i++) later(() => Sound.pop(i + 1), 150 * i + 100);
     hideMap();
     ui.end.classList.remove('hidden');
     ui.btnHome.classList.add('hidden');
@@ -879,7 +894,7 @@
       if (game.bellAt != null && game.dist >= game.bellAt) {
         game.bellAt = null; game.bellFlash = 4;
         Sound.ding();
-        setTimeout(() => say('Ding! Someone wants to get off.'), 900);
+        later(() => say('Ding! Someone wants to get off.'), 900);
       }
       if (game.dist >= game.distTarget) {
         game.dist = game.distTarget; game.v = 0; game.distTarget = null;
@@ -1950,15 +1965,15 @@
 
   function showMap(autoMs) {
     const m = game.map;
-    clearTimeout(m.timer);
+    cancelLater(m.timer);
     if (!m.open) Sound.noise(0.35, { freq: 1800, freqTo: 900, q: 0.7, vol: 0.06, attack: 0.03 });
     m.open = true;
     m.manual = !autoMs;
-    if (autoMs) m.timer = setTimeout(() => { if (!m.manual) hideMap(); }, autoMs);
+    if (autoMs) m.timer = later(() => { if (!m.manual) hideMap(); }, autoMs);
   }
   function hideMap() {
     const m = game.map;
-    clearTimeout(m.timer);
+    cancelLater(m.timer);
     if (m.open) Sound.noise(0.3, { freq: 900, freqTo: 1800, q: 0.7, vol: 0.05, attack: 0.03 });
     m.open = false; m.manual = false;
   }
@@ -2239,6 +2254,7 @@
       hub.share = hub.limit > 0 ? clamp(+d.share || 0, 0, 1) : 0;
       hubTick();
     } else if (d.hub === 'pause') hubPause();
+    else if (d.hub === 'hold') hubHold(!!d.on);
   }
 
   function hubTick() {
@@ -2258,13 +2274,15 @@
     if (timeUp() && (game.mode === 'title' || !ui.end.classList.contains('hidden'))) hubSleep();
   }
 
-  // The last-minute warning waits for a calm moment between stops, so it
-  // never talks over the counting.
+  // The last-minute warning waits for a calm moment (between stops, or as a stop's
+  // question starts), so it never talks over the counting. Returns true if it spoke.
   function hubWarnNow() {
-    if (!hub.warnPending || timeUp()) return;
+    if (!hub.warnPending || timeUp()) return false;
     hub.warnPending = false;
-    banner('🌙 The bus is getting sleepy!', 3000);
+    // (no banner behind a question card; the clock chip already shows the moon)
+    if (ui.question.classList.contains('hidden')) banner('🌙 The bus is getting sleepy!', 3000);
     say('The bus is getting sleepy. Nearly time for bed!');
+    return true;
   }
 
   function darkHex(c, t = 0.22) {
@@ -2304,6 +2322,36 @@
     Voice.stop();
     clearInterval(Music.timer); Music.timer = null;
     if (Sound.ac) { try { Sound.ac.suspend(); } catch (e) { /* ignore */ } }
+  }
+
+  // Hold (the hub's "turn me sideways" card covers us): everything stands still and goes
+  // quiet (the update clock, the timers of the stop in progress, speech, music and sounds),
+  // then carries on from the same moment. A line cut off by the hold is said again.
+  let heldLine = '';
+  function hubHold(on) {
+    if (on === hub.held || hub.paused) return;
+    const now = performance.now();
+    if (on) {
+      hub.held = true;
+      let talking = false;
+      try { talking = Voice.ok && (speechSynthesis.speaking || speechSynthesis.pending); } catch (e) { /* ignore */ }
+      heldLine = talking ? lastSaid : '';
+      Voice.stop();
+      for (const t of holdTimers) { clearTimeout(t.id); t.ms = Math.max(0, t.ms - (now - t.start)); }
+      clearInterval(Music.timer); Music.timer = null;
+      if (Sound.ac) { try { Sound.ac.suspend(); } catch (e) { /* ignore */ } }
+      document.documentElement.classList.add('held');
+    } else {
+      hub.held = false;
+      document.documentElement.classList.remove('held');
+      last = now;                                       // no jump in the update clock
+      for (const t of holdTimers) { t.start = now; t.id = setTimeout(t.fire, t.ms); }
+      if (Sound.ac && !document.hidden) { try { Sound.ac.resume(); } catch (e) { /* ignore */ } Music.start(); }
+      // the question on screen, or else the line that was cut off
+      const q = !ui.question.classList.contains('hidden') && game.askLine;
+      if (heldLine) say(heldLine, true); else if (q) say(q, true);
+      heldLine = '';
+    }
   }
 
   // Goodnight: the bus is parked at the stop it just finished. The sky turns to
@@ -2458,8 +2506,7 @@
   function frame(now) {
     const dt = Math.min(0.05, (now - last) / 1000);
     last = now;
-    update(dt);
-    draw();
+    if (!hub.held) { update(dt); draw(); }
     requestAnimationFrame(frame);
   }
   requestAnimationFrame(frame);

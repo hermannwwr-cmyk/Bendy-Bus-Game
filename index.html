@@ -101,7 +101,7 @@
     save() { save('hub-play', this.rec); },
     used() { return this.today().used; },
     total() { return (this.limit + this.today().extra) * 60; },
-    left() { return this.limit ? this.total() - this.used() : Infinity; },
+    left() { return this.limit ? Math.max(0, this.total() - this.used()) : Infinity; },   // never below zero, even after a lower limit
     share() { return this.limit ? clamp01(this.used() / Math.max(1, this.total())) : 0; },
     tick() { this.today().used += 1; this.save(); },
     setLimit(m) { this.limit = m; save('hub-limit', m); },
@@ -1563,7 +1563,7 @@
     particles = particles.filter(p => p.life > 0);
   }
   function drawParticle(p) {
-    const a = clamp01(p.life / p.max * 1.5);
+    const a = clamp01(p.life / p.max * 1.5) * (p.fade == null ? 1 : p.fade);
     ctx.globalAlpha = a;
     if (p.kind === 'star') drawStar(p.x, p.y, p.size, p.color);
     else if (p.kind === 'heart') drawHeart(p.x, p.y, p.size, '#ff6b8a');
@@ -1582,11 +1582,30 @@
     ctx.restore();
   }
   function drawParticlesFor(place) { for (const p of particles) if (p.place === place && p.kind !== 'z') drawParticle(p); }
+  // The name ribbons on screen (with their tails), so floating z's can keep off them.
+  function signBoxes() {
+    ctx.font = `700 34px ${FONT}`;
+    return ORDER.map(key => {
+      const pl = L.places[key], w = Math.max(196, ctx.measureText(GAMES[key].name).width + 70) + 2 * 50 * 0.96;
+      return { x0: pl.x - w / 2 * pl.k, x1: pl.x + w / 2 * pl.k, y0: pl.y + (50 - 27) * pl.k, y1: pl.y + (50 + 40) * pl.k };
+    });
+  }
   function drawZs() {
+    const boxes = signBoxes();
     for (const key of ORDER) {
       const pl = L.places[key];
       ctx.save(); ctx.translate(pl.x, pl.y); ctx.scale(pl.k, pl.k);
-      for (const p of particles) if (p.place === key && p.kind === 'z') drawParticle(p);
+      for (const p of particles) if (p.place === key && p.kind === 'z') {
+        // fade a z out as it nears a ribbon, so it never sits on a name ("Bendy Buz")
+        const sx = pl.x + p.x * pl.k, sy = pl.y + p.y * pl.k, rz = p.size * 0.45 * pl.k;
+        let f = 1;
+        for (const b of boxes) {
+          const dx = Math.max(b.x0 - sx, 0, sx - b.x1), dy = Math.max(b.y0 - sy, 0, sy - b.y1);
+          f = Math.min(f, clamp01((Math.hypot(dx, dy) - rz) / 14));
+        }
+        p.fade = f;
+        if (f > 0) drawParticle(p);
+      }
       ctx.restore();
     }
   }
@@ -1806,6 +1825,7 @@
   }
 
   function goSleep() {
+    rotateCard = null;                      // a waiting "turn me sideways" card never stays on top of the sleep scene
     state.screen = 'sleep'; state.key = null; songKey = 'sleep';
     say('Everyone is sleepy. Time to rest! See you tomorrow.', true);
   }
@@ -1842,8 +1862,13 @@
     say('Turn your tablet sideways!');
   }
   function closeRotate() { rotateCard = null; }
+  // Freeze / unfreeze the game under the card ({hub:'hold'}), so it doesn't play on unseen.
+  function holdGame(on) {
+    try { frame && frame.contentWindow && frame.contentWindow.postMessage({ hub: 'hold', on: !!on }, '*'); } catch (e) { /* ignore */ }
+  }
   function showOver() {
     rotateCard = { key: state.key, mode: 'over' };
+    holdGame(true);
     document.body.classList.remove('playing'); document.body.classList.add('covering');
     say('Turn your tablet sideways!');
   }
@@ -1855,6 +1880,7 @@
       if (rc.mode === 'before') {
         if (state.screen === 'launcher' && !trans && !modal && playTime.left() > 0) openGame(rc.key);
       } else if (state.screen === 'game') {
+        holdGame(false);
         document.body.classList.add('playing'); document.body.classList.remove('covering');
         try { frame && frame.focus(); } catch (e) { /* ignore */ }
       }
@@ -2425,7 +2451,11 @@
     const size = L.title.size * 0.62;
     ctx.font = `700 ${size}px ${FONT}`;
     const w = Math.min(W - 40, ctx.measureText('Time to sleep!').width + size * 3), h = size * 2.4;
-    const x = W / 2 - w / 2, y = L.title.y - h * 0.48;
+    const x = W / 2 - w / 2;
+    let y = L.title.y - h * 0.48;
+    // keep it below the gear and the music / sound buttons when it reaches under them (narrow phones)
+    const bs = L.bs, barL = SAFE.l + 14 + 62 * bs, barR = W - SAFE.r - 14 - 120 * bs - 4 * bs;
+    if (x < barL || x + w > barR) y = Math.max(y, SAFE.t + 12 + 62 * bs + 8);
     panel(x, y, w, h, Math.min(30, h * 0.3), P.cream, { depth: 7, rimColor: P.tan, edge: '#d9b57f' });
     // a big sleepy moon with a face
     const mr = h * 0.4, mx = x + mr * 1.25, my = y + h * 0.5 + Math.sin(time * 1.2) * 2;

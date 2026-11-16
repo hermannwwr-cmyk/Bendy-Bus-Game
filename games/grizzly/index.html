@@ -67,6 +67,7 @@
   //  Sound + voice
   // =====================================================================
   let audio = null, muted = false;
+  let hubHeld = false; // hub mode: the app's "turn me sideways" card covers the game, so it stands still
   // A short silent WAV, built here so no file is needed.
   function silentWavURL() {
     const n = 800, buf = new Uint8Array(44 + n), dv = new DataView(buf.buffer);
@@ -83,6 +84,7 @@
   // real user gesture (a finger lifting off counts, a finger touching down may not),
   // and by default they mute web sound when the silent switch / Silent Mode is on.
   function initAudio(gestureEnd = false) {
+    if (hubHeld) return;
     // iOS 17+: treat this page like a media player so Silent Mode doesn't mute it.
     try { if (navigator.audioSession && navigator.audioSession.type !== 'playback') navigator.audioSession.type = 'playback'; } catch (e) { /* ignore */ }
     if (!audio) {
@@ -234,7 +236,7 @@
   // Reads short instructions aloud so pre-readers can play.
   // queue = true waits for anything already being said instead of cutting it off.
   function say(words, queue = false) {
-    if (muted || !window.speechSynthesis) return;
+    if (muted || hubHeld || !window.speechSynthesis) return;
     try {
       if (!queue) window.speechSynthesis.cancel();
       const u = new SpeechSynthesisUtterance(words);
@@ -5513,16 +5515,34 @@
       } else if (m.hub === 'pause') {
         muted = true;
         if (window.speechSynthesis) try { window.speechSynthesis.cancel(); } catch (err) { /* ignore */ }
-      }
+      } else if (m.hub === 'hold') hubHold(!!m.on);
     });
     hubPost({ hub: 'hello', game: 'grizzly' });
     hubStars();
   }
+  // Hold: while the app's "turn me sideways" card covers the game, the scene, the main loop's
+  // clock (and so the bedtime grace), speech and sound all stand still; then it carries on.
+  function hubHold(on) {
+    if (on === hubHeld) return;
+    hubHeld = on;
+    keys.left = keys.right = false; pointer.down = false;
+    if (on) {
+      if (window.speechSynthesis) try { window.speechSynthesis.cancel(); } catch (err) { /* ignore */ }
+      if (audio) try { const r = audio.suspend(); if (r) r.catch(() => {}); } catch (err) { /* ignore */ }
+    } else {
+      last = performance.now();                                    // no jump in the clock
+      if (audio && document.visibilityState === 'visible') try { const r = audio.resume(); if (r) r.catch(() => {}); } catch (err) { /* ignore */ }
+    }
+  }
   // "Back to all games": the all-in-one app's shared button (the same in all three games): a round
   // cream paper button with a 2 x 2 grid of little coloured cards, bobbing gently so kids notice it.
   const HUB_CARDS = ['#f26b5b', '#f5b83d', '#5cb85c', '#4fa3e0']; // top-left, top-right, bottom-left, bottom-right
+  // On small screens (a phone held sideways) it grows so it is still at least 56 CSS px across.
+  const hubExitR = () => 32 * Math.max(1, 56 / (64 * ((parseFloat(canvas.style.width) || W) / W)));
   function drawHubExitButton(x, y) {
-    const d = 64, r = d / 2, pressed = hot(x - r, y - r, d, d) && pointer.down ? 3 : 0;
+    const r = hubExitR(), d = r * 2;
+    x = Math.max(x, 14 + r); y = Math.max(y, 6 + r);           // grow from the top-left corner
+    const pressed = hot(x - r, y - r, d, d) && pointer.down ? 3 : 0;
     const bob = Math.sin(time * Math.PI) * 2;                     // +-2 px over 2 s
     circle(x, y + 6 + bob * 0.5, r, P.shadow);
     ctx.save(); ctx.translate(x, y + bob + pressed);
@@ -5625,7 +5645,7 @@
   // Minutes left today, beside the gear on the menu.
   function drawMenuTime() {
     if (!playTime.limit || playTime.left() <= 0) return;
-    const ox = HUB ? 18 : 0; // room for the bigger "back to all games" button
+    const ox = HUB ? Math.max(18, 2 * hubExitR() - 50) : 0; // room for the bigger "back to all games" button (clear of the title board at x 218)
     panel(70 + ox, 12, 118, 36, 18, P.cream, { depth: 4, rim: 2.5 });
     drawClockIcon(91 + ox, 30, 11, null);
     text(`${Math.ceil(playTime.left() / 60)} min`, 140 + ox, 31, 21, INK, null);
@@ -5803,6 +5823,7 @@
   window.addEventListener('click', () => initAudio(true));
 
   window.addEventListener('keydown', e => {
+    if (hubHeld) return;
     initAudio(true);
     const k = e.key;
     if (modal) {
@@ -5862,8 +5883,7 @@
   function frame(now) {
     const dt = Math.min(0.05, (now - last) / 1000);
     last = now;
-    update(dt);
-    render();
+    if (!hubHeld) { update(dt); render(); }
     requestAnimationFrame(frame);
   }
   requestAnimationFrame(frame);

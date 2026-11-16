@@ -38,13 +38,14 @@ In `file://` the frames have opaque origins, so never touch `parent.document` an
 | game → hub | `{hub:'sleep'}` | the game's own gentle bedtime ending has finished; the hub treats it as the end of the day |
 | game → hub | `{hub:'stars', count}` | optional, for the stars shown on the launcher |
 | hub → game | `{hub:'time', limit, left, used, share}` | about every second and on hello; `left` is null and `share` 0 when the limit is off |
+| hub → game | `{hub:'hold', on}` | `on:true` when the "turn me sideways" card covers a running game, `on:false` when it goes. The game freezes (no updates, timers or speech, sound suspended) and then carries on exactly where it was. Bus re-says the line that was cut off, or the question on screen. MRT is never covered and ignores it. |
 | hub → game | `{hub:'pause'}` | right before the frame is removed |
 
-In hub mode every game: doesn't count time or touch its own play-time storage; hides its own grown-up gear/gate/settings; shows the shared **all-games button** top-left on its start screen (a 64px cream paper circle, fill `#fff6e0`, rim `#d9b57f`, with a 2×2 grid of rounded cards `#f26b5b` `#f5b83d` / `#5cb85c` `#4fa3e0`, bobbing gently); shows the shared clock chip look (cream pill, drawn clock, m:ss, orange with a moon in the last minute); runs its own gentle bedtime ending and then posts `sleep` once; never starts a new round once time is up; and paints the letterbox around its canvas as sky and grass (Grizzly, Bus).
+In hub mode every game: doesn't count time or touch its own play-time storage; hides its own grown-up gear/gate/settings; shows the shared **all-games button** top-left on its start screen (a 64px cream paper circle, at least 56 CSS px on phones, fill `#fff6e0`, rim `#d9b57f`, with a 2×2 grid of rounded cards `#f26b5b` `#f5b83d` / `#5cb85c` `#4fa3e0`, bobbing gently); shows the shared clock chip look (cream pill, drawn clock, m:ss, orange with a moon in the last minute); runs its own gentle bedtime ending and then posts `sleep` once; never starts a new round once time is up; and paints the letterbox around its canvas as sky and grass (Grizzly, Bus).
 
-- **Grizzly:** the menu gear spot becomes the all-games button; its bedtime ending (end-of-level overlay for 3 s, or `BEDTIME_GRACE`) posts `sleep` where it used to `go('sleep')`.
+- **Grizzly:** the menu gear spot becomes the all-games button (grown by `hubExitR()` on small screens, with the "N min" chip moved along); its bedtime ending (end-of-level overlay for 3 s, or `BEDTIME_GRACE`) posts `sleep` where it used to `go('sleep')`.
 - **MRT:** `#homeClock` becomes the all-games button (inline SVG). Its "2 more stops" flow starts at 60 s left, so its bedtime ride usually ends before zero; it posts `sleep` ~7 s into the sleepy end screen. At zero on the start or normal end screen it posts `sleep` at once.
-- **Bus:** it had no limiter; hub mode adds the clock chip, a last-minute warning between stops, an evening-to-night sky following `share`, and a goodnight moment (the bus parks, lights off, "Goodnight, bus!") after the stop in progress is answered.
+- **Bus:** it had no limiter; hub mode adds the clock chip, a last-minute warning (between stops, or as a stop's question starts if it hasn't been given; never during counting), an evening-to-night sky following `share`, and a goodnight moment (the bus parks, lights off, "Goodnight, bus!") after the stop in progress is answered.
 
 ## The hub (`index.html`)
 
@@ -63,6 +64,7 @@ One canvas, in the Grizzly paper-cut art style (its art kit, palette and the emb
 No test suite in this repo. Verify with headless Playwright (`require('playwright')` is preinstalled in cloud sessions), serving the folder with `python3 -m http.server` or loading `file://`. Useful sizes: iPad 1180×820, 1024×768, 820×1180; iPhone 390×844, 844×390, 375×667.
 - Seed bedtime states with `page.addInitScript(() => { localStorage.setItem('hub-limit','20'); localStorage.setItem('hub-play', JSON.stringify({day, used: 1130, extra: 0})) })`; `hub-limit` `'0'` turns the limit off.
 - The MRT suite (`node tests/play.js` in the MRT-GAME repo) still runs against a copy of `games/mrt/index.html` placed next to that `tests/` folder (with its `icons/` and manifest), proving standalone behaviour is unchanged.
+- Hold: open Bus or Grizzly landscape, then `page.setViewportSize` to portrait; while covered, `__bendyBus.game.dist`/`time` and Grizzly's canvas and `__game.music.step` must not change, and nothing is spoken. Bus's flow timers go through `later()`/`cancelLater()` so a hold can freeze them; use those for new timers in the bus game.
 - Each game's own test hooks still work inside the frame (`frame.evaluate`): Grizzly `window.__game`, Bus `window.__bendyBus`.
 - Never commit test hooks or shortened timers.
 

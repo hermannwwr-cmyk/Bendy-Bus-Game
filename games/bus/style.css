@@ -161,6 +161,7 @@ button { font-family: inherit; cursor: pointer; border: none; color: inherit; }
 .hub #hud { position: absolute; left: 1.5%; top: 2.2%; display: flex; align-items: flex-start; gap: calc(var(--u) * .8); }
 .hub #stars { position: static; }
 .hub #stage { box-shadow: none; }
+.hub.held *, .hub.held *::before, .hub.held *::after { animation-play-state: paused !important; }
 #playClock {
   display: flex; align-items: center; gap: .3em;
   background: #fff6e0; border-radius: 999px; margin-top: calc(var(--u) * .35); line-height: 1.3;
