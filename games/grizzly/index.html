@@ -61,7 +61,7 @@
   // Saved stickers (stars) per game. Only a convenience; works without storage.
   let stars = {};
   try { stars = JSON.parse(localStorage.getItem('grizzly-stars') || '{}') || {}; } catch (e) { stars = {}; }
-  function saveStars() { try { localStorage.setItem('grizzly-stars', JSON.stringify(stars)); } catch (e) { /* ignore */ } }
+  function saveStars() { try { localStorage.setItem('grizzly-stars', JSON.stringify(stars)); } catch (e) { /* ignore */ } hubStars(); }
 
   // =====================================================================
   //  Sound + voice
@@ -1295,6 +1295,7 @@
   function go(name, intro) {
     // once today's play time is used up, every game leads to the sleeping Grizzly
     if (name !== 'menu' && name !== 'sleep' && playTime.left() <= 0) { name = 'sleep'; intro = undefined; }
+    if (name === 'sleep') hubSleep(); // inside the all-in-one app, the app shows its own sleep scene
     graceT = 0; overlayT = 0;
     scene = S[name];
     songKey = name;
@@ -5475,7 +5476,67 @@
   //  (the next end-of-level or end-of-game screen, or BEDTIME_GRACE seconds at most), then
   //  Grizzly falls asleep until tomorrow.
   const DEFAULT_LIMIT = 20, LAST_MINUTE = 60, BEDTIME_GRACE = 45, LIMIT_CHOICES = [0, 10, 15, 20, 30];
-  const playTime = (() => {
+
+  // ---- Hub mode: inside the all-in-one app (index.html?hub=1 in the app's frame) ----
+  //  The app owns the play-time limit, the grown-up settings and the sleep screen. Here the game
+  //  doesn't count time or touch its play-time storage: playTime reads the app's {hub:'time'}
+  //  messages (no limit until the first one). The gear becomes a "back to all games" house that
+  //  posts {hub:'exit'}, and where the gentle bedtime ending would go to sleep it posts
+  //  {hub:'sleep'} once. Without ?hub=1 none of this does anything.
+  const HUB = /[?&]hub=1\b/.test(location.search) && window.parent !== window;
+  const hubTime = { limit: 0, left: Infinity, used: 0, share: 0 };
+  let hubSlept = false;
+  function hubPost(msg) { if (HUB) try { window.parent.postMessage(msg, '*'); } catch (e) { /* ignore */ } }
+  function hubStars() { hubPost({ hub: 'stars', count: Object.values(stars).reduce((a, n) => a + (Number(n) || 0), 0) }); }
+  function hubSleep() { if (HUB && !hubSlept) { hubSlept = true; hubPost({ hub: 'sleep' }); } }
+  const hubPlayTime = () => ({
+    get limit() { return hubTime.limit; },
+    setLimit() {}, add() {}, addMinutes() {}, resetToday() {},
+    used() { return hubTime.used; },
+    allowed() { return hubTime.limit * 60; },
+    left() { return hubTime.limit ? hubTime.left : Infinity; },
+    share() { return hubTime.limit ? clamp01(hubTime.share) : 0; },
+  });
+  if (HUB) {
+    window.addEventListener('message', e => {
+      const m = e.data;
+      if (e.source !== window.parent || !m || typeof m !== 'object' || typeof m.hub !== 'string') return;
+      if (m.hub === 'time') {
+        const limit = Math.max(0, Number(m.limit) || 0), left = Number(m.left);
+        hubTime.limit = limit && m.left !== null && Number.isFinite(left) ? limit : 0;
+        hubTime.left = hubTime.limit ? left : Infinity;
+        hubTime.used = Math.max(0, Number(m.used) || 0);
+        hubTime.share = Number(m.share) || 0;
+        // more time was given before the app closed the frame: Grizzly wakes up
+        if (scene === S.sleep && playTime.left() > 0) { hubSlept = false; go('menu'); }
+      } else if (m.hub === 'pause') {
+        muted = true;
+        if (window.speechSynthesis) try { window.speechSynthesis.cancel(); } catch (err) { /* ignore */ }
+      }
+    });
+    hubPost({ hub: 'hello', game: 'grizzly' });
+    hubStars();
+  }
+  // "Back to all games": a little storybook cottage on a round paper button, where the gear is.
+  function drawHubExitButton(x, y) {
+    const r = 29, pressed = hot(x - 32, y - 32, 64, 64) && pointer.down ? 3 : 0;
+    circle(x, y + 8, r, P.shadow);
+    circle(x, y + 5, r, dark(P.cream, 0.34));
+    circle(x, y + pressed, r, P.cream);
+    ctx.save(); ctx.translate(x, y + pressed + 1);
+    solid(rr(6, -19, 6, 12, 1.5), P.woodDark, { depth: 0, rim: 2 });            // chimney
+    solid(rr(-13, -5, 26, 21, 3), P.honeyLight, { depth: 3, rim: 2 });          // walls
+    const roof = new Path2D();
+    roof.moveTo(0, -20); roof.lineTo(20, -2); roof.quadraticCurveTo(20, 1, 17, 1);
+    roof.lineTo(-17, 1); roof.quadraticCurveTo(-20, 1, -20, -2); roof.closePath();
+    solid(roof, P.coral, { depth: 3, rim: 2 });
+    solid(rr(-4.5, 4, 9, 12, 4.5), P.teal, { depth: 0, rim: 2 });              // door
+    circle(2, 10.5, 1.2, P.honeyLight);
+    ctx.restore();
+    buttons.push({ x: x - 32, y: y - 32, w: 64, h: 64, action: () => hubPost({ hub: 'exit' }) });
+  }
+
+  const playTime = HUB ? hubPlayTime() : (() => {
     const today = () => { const d = new Date(); return d.getFullYear() + '-' + (d.getMonth() + 1) + '-' + d.getDate(); };
     const load = (key, def) => { try { const v = localStorage.getItem(key); return v === null ? def : JSON.parse(v); } catch (e) { return def; } };
     const save = (key, v) => { try { localStorage.setItem(key, JSON.stringify(v)); } catch (e) { /* storage blocked: lasts for this visit */ } };
@@ -5499,9 +5560,12 @@
   let playAccum = 0, warnedLastMinute = false, graceT = 0, overlayT = 0;
 
   function updatePlayTime(dt) {
+    if (HUB && scene === S.menu && playTime.left() <= 0) { go('sleep'); return; } // no game to finish
     if (!inGame() || modal || document.visibilityState !== 'visible') return;
-    playAccum += dt;
-    if (playAccum >= 1) { playTime.add(Math.floor(playAccum)); playAccum %= 1; }
+    if (!HUB) { // in hub mode the app counts the time
+      playAccum += dt;
+      if (playAccum >= 1) { playTime.add(Math.floor(playAccum)); playAccum %= 1; }
+    }
     const left = playTime.left();
     if (left > LAST_MINUTE) { warnedLastMinute = false; return; }
     if (left > 0) {
@@ -5541,12 +5605,14 @@
   // Minutes left today, beside the gear on the menu.
   function drawMenuTime() {
     if (!playTime.limit || playTime.left() <= 0) return;
-    panel(70, 12, 118, 36, 18, P.cream, { depth: 4, rim: 2.5 });
-    drawClockIcon(91, 30, 11, null);
-    text(`${Math.ceil(playTime.left() / 60)} min`, 140, 31, 21, INK, null);
+    const ox = HUB ? 18 : 0; // room for the bigger "back to all games" button
+    panel(70 + ox, 12, 118, 36, 18, P.cream, { depth: 4, rim: 2.5 });
+    drawClockIcon(91 + ox, 30, 11, null);
+    text(`${Math.ceil(playTime.left() / 60)} min`, 140 + ox, 31, 21, INK, null);
   }
   // The grown-up gear (menu and sleep screen, where the home button would be).
   function drawGearButton(x, y) {
+    if (HUB) { drawHubExitButton(x + 6, y + 8); if (scene === S.menu) drawMenuTime(); return; }
     roundButton(x, y, openGate, () => {
       ctx.fillStyle = INK;
       for (let i = 0; i < 8; i++) { ctx.save(); ctx.rotate(i * Math.PI / 4); ctx.fill(rr(-3.6, -15, 7.2, 9, 2)); ctx.restore(); }
@@ -5558,7 +5624,7 @@
   // ---- The grown-up panel: a times-table check, then the play-time settings ----
   let modal = null; // { mode: 'gate' | 'settings', a, b, typed, shake }
   function newSum() { modal.a = randInt(6, 9); modal.b = randInt(6, 9); modal.typed = ''; }
-  function openGate() { modal = { mode: 'gate', typed: '', shake: 0 }; newSum(); }
+  function openGate() { if (HUB) return; modal = { mode: 'gate', typed: '', shake: 0 }; newSum(); }
   function gateKey(k) {
     if (!modal || modal.mode !== 'gate') return;
     if (k === 'back') modal.typed = modal.typed.slice(0, -1);
