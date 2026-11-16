@@ -330,8 +330,17 @@
   .home-clock { position: fixed; z-index: 6; top: calc(8px + env(safe-area-inset-top, 0px)); right: calc(8px + env(safe-area-inset-right, 0px)); border: 0; background: rgba(255,255,255,.85); color: var(--ink); border-radius: 999px; padding: 5px 12px; font: inherit; font-size: 15px; font-weight: 800; box-shadow: 0 2px 0 rgba(0,0,0,.1); }
   body:not([data-screen="home"]) .home-clock { display: none; }
   /* hub mode (inside the all-in-one app): the chip becomes a big "back to all games" button */
-  .home-clock.hub-exit { display: flex; align-items: center; gap: 6px; min-height: 56px; min-width: 56px; padding: 6px 18px 6px 12px; font-size: 18px; }
-  .home-clock.hub-exit b { font-size: 28px; line-height: 1; }
+  .home-clock.hub-exit { left: calc(8px + env(safe-area-inset-left, 0px)); right: auto; width: 64px; height: 64px; padding: 0; border-radius: 50%; background: none; box-shadow: none;
+    filter: drop-shadow(0 3px 3px rgba(80, 50, 20, .25)); animation: hubBob 2s ease-in-out infinite; }
+  .home-clock.hub-exit svg { display: block; width: 64px; height: 64px; }
+  @keyframes hubBob { 0%, 100% { transform: translateY(-2px); } 50% { transform: translateY(2px); } }
+  @media (prefers-reduced-motion: reduce) { .home-clock.hub-exit { animation: none; } }
+  #home.screen.hub-room { padding-top: calc(80px + env(safe-area-inset-top, 0px)); } /* keep the choices clear of it */
+  /* hub mode: the in-game clock chip in the shared cream look (orange with a moon in the last minute) */
+  .clock.hub-clock { display: flex; align-items: center; gap: 6px; background: #fff6e0; color: #3a2a3c; border-radius: 999px; padding: 8px 14px 8px 10px; box-shadow: 0 0 0 2px #d9b57f, var(--shadow); }
+  .clock.hub-clock.late { background: #ff9a2e; box-shadow: 0 0 0 2px #d9761a, var(--shadow); }
+  .clock.hub-clock svg { width: 22px; height: 22px; flex: none; }
+  .clock.hub-clock[hidden] { display: none; }
   .stars { font-size: 20px; background: var(--card); border-radius: 14px; padding: 10px 12px; box-shadow: var(--shadow); white-space: nowrap; }
 
   /* Route strip: the line's first and last stations named at the two ends, and a close-up "window" of big dots
@@ -810,6 +819,9 @@
   const hubT = { limit: 0, left: Infinity, used: 0 };
   let hubSlept = false;
   const hubSleep = () => { if (!hubSlept) { hubSlept = true; toHub({ hub: "sleep" }); } }; // once: the bedtime ending is done
+  const HUB_CLOCK = `<svg viewBox="0 0 22 22" aria-hidden="true"><circle cx="11" cy="11" r="8.5" fill="#fff" stroke="currentColor" stroke-width="2.4"/><path d="M11 6.5V11l3.2 2" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+  const HUB_MOON = `<svg viewBox="0 0 22 22" aria-hidden="true"><path d="M14.5 3.2a8.3 8.3 0 1 0 4.6 12.6A7 7 0 0 1 14.5 3.2z" fill="#fff6e0"/></svg>`;
+  const hubOut = () => HUB && hubT.limit && hubT.left <= 0; // the hub says today's time is used up
   if (HUB) toHub({ hub: "hello", game: "mrt" });
   const playTime = {
     lim: HUB ? 0 : +store.get("mrtLimit", 20) || 0, // 20 minutes a day unless a grown-up changes it
@@ -1115,6 +1127,7 @@
   }
 
   function startGame() {
+    if (hubOut()) return hubSleep(); // in the hub, no new ride once today's time is used up
     const gen = ++S.gen; // bumping this cancels timers/rides from an earlier game
     S.home = { line: S.line, startIdx: S.startIdx, startDir: S.startDir };
     const st = S.line.stations;
@@ -2247,7 +2260,12 @@
   function showClocks() {
     const on = !!playTime.limit(), left = playTime.left();
     $("clock").hidden = !on;
-    if (HUB) { if (on) $("clock").textContent = `⏱️ ${mmss(left)}`; return; } // #homeClock is the "all games" button
+    if (HUB) { // #homeClock is the "all games" button; the clock chip gets a drawn clock, or a moon in the last minute
+      const late = left <= LAST_CALL;
+      $("clock").classList.toggle("late", on && late);
+      if (on) $("clock").innerHTML = (late ? HUB_MOON : HUB_CLOCK) + `<span>${mmss(left)}</span>`;
+      return;
+    }
     if (!on) { $("homeClock").textContent = "⏱️ No limit"; return; }
     $("clock").textContent = `⏱️ ${mmss(left)}`;
     $("homeClock").textContent = `⏱️ ${Math.max(0, Math.ceil(left / 60))} min`;
@@ -2311,7 +2329,14 @@
   if (HUB) {
     const hc = $("homeClock");
     hc.classList.add("hub-exit");
-    hc.innerHTML = "<b>🏠</b>All games";
+    $("home").classList.add("hub-room");
+    $("clock").classList.add("hub-clock");
+    // the shared "all games" button: a round cream paper button with a 2×2 grid of little cards
+    const card = (x, y, c, r) => `<rect x="${x}" y="${y}" width="10.9" height="10.9" rx="2.4" fill="${c}" stroke="${r}" stroke-width="1.3"/>`;
+    hc.innerHTML = `<svg viewBox="0 0 64 64" aria-hidden="true"><defs><clipPath id="hubBtnClip"><circle cx="32" cy="32" r="30"/></clipPath></defs>
+      <g clip-path="url(#hubBtnClip)"><rect width="64" height="64" fill="#efdcb4"/><circle cx="30.3" cy="30.3" r="29.2" fill="#fff6e0"/></g>
+      <circle cx="32" cy="32" r="30.5" fill="none" stroke="#d9b57f" stroke-width="3"/>
+      ${card(17.3, 17.3, "#f26b5b", "#d4503f")}${card(35.8, 17.3, "#f5b83d", "#d99a22")}${card(17.3, 35.8, "#5cb85c", "#449c44")}${card(35.8, 35.8, "#4fa3e0", "#3787c4")}</svg>`;
     hc.setAttribute("aria-label", "Back to all games");
     hc.onclick = () => toHub({ hub: "exit" });
     toHub({ hub: "stars", count: Object.keys(badges).length });
@@ -2324,13 +2349,15 @@
         hubT.used = +d.used || 0;
         showClocks();
         // time used up while still choosing on the start screen: no ride to finish, so sleep now
-        if (hubT.limit && hubT.left <= 0 && document.body.dataset.screen === "home") hubSleep();
+        // (or on a normal end screen; the bedtime end screen keeps its goodnight, see finish())
+        const scr = document.body.dataset.screen;
+        if (hubOut() && (scr === "home" || (scr === "end" && !$("end").classList.contains("sleepy")))) hubSleep();
       } else if (d.hub === "pause") {
         music.stop(); try { speechSynthesis.cancel(); } catch {}
       }
     });
   }
-  $("otherBtn").onclick = () => { restoreHome(); renderLines(); show("home"); pullInStartTrain(); };
+  $("otherBtn").onclick = () => { if (hubOut()) return hubSleep(); restoreHome(); renderLines(); show("home"); pullInStartTrain(); };
   $("homeBtn").onclick = () => { S.gen++; try { speechSynthesis.cancel(); } catch {} restoreHome(); renderLines(); show("home"); pullInStartTrain(); };
   $("sayBtn").onclick = speakQ;
   $("startPick").onclick = openPicker;
