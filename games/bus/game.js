@@ -36,7 +36,7 @@
   const timeUp = () => HUB && hub.limit > 0 && hub.left != null && hub.left <= 0;
   if (HUB) {
     document.documentElement.classList.add('hub');
-    window.addEventListener('message', (e) => onHubMessage(e.data));
+    window.addEventListener('message', (e) => { if (e.source === window.parent) onHubMessage(e.data); });
     hubPost({ hub: 'hello', game: 'bus' });
   }
 
@@ -2192,7 +2192,7 @@
     drawFX();
     for (const s of game.signs) drawSign(s);
     [...game.people].sort((a, b) => a.y - b.y).forEach(drawPerson);
-    if (HUB) drawNight();
+    if (HUB) { hubLetterbox(); drawNight(); }
     drawOverlays();
     drawMap();
     drawRoute();
@@ -2207,13 +2207,26 @@
     clockEl = document.createElement('div');
     clockEl.id = 'playClock';
     clockEl.className = 'hidden';
+    // a small drawn clock face (normal) and a crescent moon (last minute)
+    clockEl.innerHTML = '<svg class="ic ic-clock" viewBox="0 0 24 24" aria-hidden="true">'
+      + '<circle cx="12" cy="13" r="9.5" fill="#f26b5b"/><circle cx="12" cy="13" r="7" fill="#fffdf6"/>'
+      + '<rect x="9.5" y="1.2" width="5" height="2.6" rx="1.2" fill="#f26b5b"/>'
+      + '<path d="M12 13V8.6M12 13l3 1.8" stroke="#3a2a3c" stroke-width="2" stroke-linecap="round" fill="none"/>'
+      + '<circle cx="12" cy="13" r="1.3" fill="#3a2a3c"/></svg>'
+      + '<svg class="ic ic-moon" viewBox="0 0 24 24" aria-hidden="true">'
+      + '<path d="M15.5 3.2a9.3 9.3 0 1 0 5.6 13.7A7.6 7.6 0 0 1 15.5 3.2z" fill="#fff3b8"/>'
+      + '<circle cx="9.5" cy="15.5" r="1.1" fill="#f2c94c"/><circle cx="13.5" cy="18.2" r=".8" fill="#f2c94c"/></svg>'
+      + '<span class="t"></span>';
     ui.hud.appendChild(clockEl);
     // Big "back to all games" button on the title screen
     const exit = document.createElement('button');
     exit.id = 'hubExit';
     exit.title = 'All games';
     exit.setAttribute('aria-label', 'Back to all games');
-    exit.innerHTML = '<span>🏠</span>';
+    // the shared "all games" glyph: a 2x2 grid of little cards
+    const CARD = [['#f26b5b', 17.3, 17.3], ['#f5b83d', 35.85, 17.3], ['#5cb85c', 17.3, 35.85], ['#4fa3e0', 35.85, 35.85]];
+    exit.innerHTML = '<svg viewBox="0 0 64 64" aria-hidden="true">' + CARD.map(([c, x, y]) =>
+      `<rect x="${x}" y="${y}" width="10.85" height="10.85" rx="2.4" fill="${c}" stroke="${darkHex(c)}" stroke-width="1.3"/>`).join('') + '</svg>';
     exit.addEventListener('click', () => { Sound.pop(2); Voice.stop(); hubPost({ hub: 'exit' }); });
     ui.title.appendChild(exit);
   }
@@ -2234,7 +2247,7 @@
       clockEl.classList.toggle('hidden', !on);
       if (on) {
         const l = hub.left, late = l <= 60;
-        clockEl.textContent = `${late ? '🌙' : '⏱️'} ${Math.floor(l / 60)}:${String(l % 60).padStart(2, '0')}`;
+        clockEl.lastChild.textContent = `${Math.floor(l / 60)}:${String(l % 60).padStart(2, '0')}`;
         clockEl.classList.toggle('late', late);
       }
     }
@@ -2252,6 +2265,32 @@
     hub.warnPending = false;
     banner('🌙 The bus is getting sleepy!', 3000);
     say('The bus is getting sleepy. Nearly time for bed!');
+  }
+
+  function darkHex(c, t = 0.22) {
+    const n = parseInt(c.slice(1), 16), f = (v) => Math.round(v * (1 - t)).toString(16).padStart(2, '0');
+    return '#' + f((n >> 16) & 255) + f((n >> 8) & 255) + f(n & 255);
+  }
+
+  // Letterbox: the space around the 16:9 stage carries on the sky above and
+  // the grass below (and the street at the sides), following the sky clock.
+  let lbKey = '';
+  function hubLetterbox() {
+    const p = skyPhase();
+    const [top, bot] = p > 0 ? skyAt(p) : ['#5db7f0', '#d4f0ff'];
+    const dark = 0.36 * smooth(0.8, 1, p);
+    const g = (c) => (dark > 0.003 ? mixHex(c, '#121848', dark) : c);
+    const r = stage.getBoundingClientRect();
+    const y = (v) => (r.top + (v / H) * r.height).toFixed(1) + 'px';
+    const key = [top, bot, Math.round(dark * 100), y(0), y(H)].join();
+    if (key === lbKey) return;
+    lbKey = key;
+    const grass = g('#7cc56a');
+    const bg = `linear-gradient(to bottom, ${top} 0px, ${top} ${y(0)}, ${bot} ${y(422)}, ${grass} ${y(422)}, ${grass} ${y(444)},`
+      + ` ${g('#666b73')} ${y(444)}, ${g('#666b73')} ${y(616)}, ${g('#d6d6d6')} ${y(616)}, ${g('#d6d6d6')} ${y(628)},`
+      + ` ${g('#e8dcc8')} ${y(628)}, ${g('#e8dcc8')} ${y(708)}, ${grass} ${y(708)}, ${g('#5fae4f')} 100%)`;
+    document.documentElement.style.background = bg;
+    document.body.style.background = 'transparent';
   }
 
   function hubSleep() {
