@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="theme-color" content="#2e6b4f">
+<title>Bendy Bus Counting Fun</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@500;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div id="stage">
+  <canvas id="game"></canvas>
+
+  <div id="hud" class="hidden">
+    <div id="stars"><span class="star">⭐</span> <span id="starCount">0</span></div>
+  </div>
+  <div id="controls">
+    <button id="btnSound" title="Sound and voice" aria-label="Sound and voice">🔊</button>
+    <button id="btnMusic" title="Music" aria-label="Music">🎵</button>
+    <button id="btnMap" class="hidden" title="Route map" aria-label="Route map">🗺️</button>
+    <button id="btnHome"class="hidden" title="Back to start" aria-label="Back to start">🏠</button>
+  </div>
+
+  <div id="banner" class="hidden"></div>
+
+  <div id="question" class="hidden">
+    <div id="qText"></div>
+    <div id="choices"></div>
+  </div>
+
+  <div id="title" class="screen">
+    <div class="logo"><span class="l1">Bendy Bus</span><span class="l2">Counting Fun!</span></div>
+    <div class="sub">Count the passengers getting on and off at every bus stop 🚏</div>
+    <div class="levels">
+      <button class="level lv-play" data-level="simple"><span class="em">▶️</span><span class="nm">Play</span><span class="rg">count up to 5</span></button>
+    </div>
+  </div>
+
+  <div id="end" class="screen hidden">
+    <div class="card">
+      <div class="endTitle">🎉 Terminus! 🎉</div>
+      <div id="endMsg">You counted at every bus stop!</div>
+      <div id="endStars"></div>
+      <div class="endBtns">
+        <button id="btnAgain" class="big green">🔁 Play again</button>
+        <button id="btnLevels" class="big blue">🏠 Home</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="rotate">Turn your device sideways for a bigger bus! 📱↻</div>
+</div>
+<script src="game.js"></script>
+</body>
+</html>

@@ -1,0 +1,2322 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>MRT Math Express</title>
+<!-- Home Screen / app icon: an MRT train (icons/icon.svg is the source drawing) -->
+<link rel="apple-touch-icon" href="icons/icon-180.png">
+<link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png">
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="apple-mobile-web-app-title" content="MRT Math">
+<meta name="theme-color" content="#5fb8ff">
+<style>
+  :root {
+    --bg: #f1f8ff;
+    --ink: #1d2b3a;
+    --muted: #5b6b7c;
+    --card: #ffffff;
+    --line: #D42E12;
+    --good: #2fa84f;
+    --bad: #e0574a;
+    --platform: #c9d3dc;
+    --shadow: 0 4px 0 rgba(0,0,0,.15), 0 10px 16px -8px rgba(0,0,0,.3);
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { margin: 0; height: 100%; }
+  body {
+    background: var(--bg);
+    color: var(--ink);
+    font-family: "Comic Sans MS", "Chalkboard SE", "Baloo 2", system-ui, sans-serif;
+    user-select: none;
+    overflow-x: hidden;
+  }
+  button { font: inherit; color: inherit; cursor: pointer; border: 0; }
+  .screen { display: none; min-height: 100%; padding: 16px; max-width: 760px; margin: 0 auto; }
+  .screen.active { display: flex; flex-direction: column; gap: 14px; animation: screenIn .3s ease-out; }
+  @keyframes screenIn { from { opacity: 0; } }
+
+  /* ---------- Home ---------- */
+  h1 { font-size: clamp(28px, 7vw, 44px); margin: 8px 0 0; text-align: center; }
+  .sub { text-align: center; color: var(--muted); margin: 0; font-size: 18px; }
+  h2 { font-size: 20px; margin: 6px 0 0; }
+  .lines { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; }
+  .line-btn {
+    background: var(--c); color: #fff; border-radius: 18px; padding: 14px 12px;
+    text-align: left; box-shadow: var(--shadow); position: relative; min-height: 76px;
+    outline: 4px solid transparent; outline-offset: 3px; transition: transform .1s;
+  }
+  .line-btn .code { font-size: 26px; font-weight: bold; display: block; }
+  .line-btn .name { font-size: 14px; opacity: .95; }
+  .line-btn .badge { position: absolute; top: 8px; right: 10px; font-size: 20px; }
+  .line-btn.sel { outline-color: var(--ink); transform: scale(1.03); }
+  .choices { display: flex; gap: 10px; flex-wrap: wrap; }
+  .pill {
+    flex: 1 1 140px; background: var(--card); border-radius: 18px; padding: 14px 10px;
+    font-size: 20px; box-shadow: var(--shadow); outline: 4px solid transparent; outline-offset: 2px;
+  }
+  .pill small { display: block; font-size: 13px; color: var(--muted); }
+  .pill.sel { outline-color: var(--ink); background: #fff7d6; }
+  .go {
+    background: var(--good); color: #fff; font-size: 30px; border-radius: 24px; padding: 16px;
+    box-shadow: 0 6px 0 #1f7a37; margin-top: 6px;
+  }
+  .go:active { transform: translateY(4px); box-shadow: 0 2px 0 #1f7a37; }
+
+  /* the start button is a train that pulls in, waits, and drives off when tapped */
+  .start-hint { text-align: center; font-size: 18px; font-weight: bold; margin: 0; }
+  .start-hint span { display: inline-block; animation: point .6s ease-in-out infinite alternate; }
+  @keyframes point { to { transform: translateY(6px); } }
+  /* the start train waits in a dock at the bottom of the home screen, after the choices */
+  #home.screen { padding-bottom: 240px; } /* replaced by the dock's real height in JS */
+  .start-dock {
+    position: fixed; z-index: 5; left: 0; right: 0; bottom: 0;
+    padding: 8px 16px calc(10px + env(safe-area-inset-bottom, 0px));
+    background: var(--bg); box-shadow: 0 -6px 16px rgba(0,0,0,.12);
+  }
+  .start-dock > * { max-width: 728px; margin-inline: auto; }
+  .start-track { display: flex; align-items: flex-end; gap: 10px; }
+  .start-track > .start-train { flex: 1; min-width: 0; }
+  /* phones: one carriage, so the signal fits beside it */
+  @media (max-width: 520px) {
+    .start-train .st-car:first-child { display: none; }
+    .start-train .st-wheels i:nth-child(5) { display: none; }
+  }
+  .signal { flex: none; position: relative; z-index: 2; display: flex; flex-direction: column; align-items: center; margin-bottom: 12px; }
+  .sig-head {
+    display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 8px 7px;
+    background: linear-gradient(#2a3744, #18222c); border-radius: 18px; box-shadow: 0 4px 0 rgba(0,0,0,.25);
+  }
+  .sig-pole { width: 10px; height: 12px; background: linear-gradient(90deg, #6b7785, #9aa6b2, #6b7785); }
+  .lamp { position: relative; display: block; border-radius: 50%; transition: background .25s, box-shadow .25s, color .25s; }
+  /* a little hood over each lamp, like a real signal */
+  .lamp::before { content: ""; position: absolute; left: -3px; right: -3px; top: -4px; height: 45%; border-radius: 50% 50% 0 0 / 100% 100% 0 0; border-top: 4px solid #0b1117; }
+  .lamp-red, .lamp-amber { width: 28px; height: 28px; }
+  .lamp-red { background: #4a2626; }
+  .lamp-amber { background: #4a3d22; }
+  .lamp-go {
+    width: 84px; height: 84px; font-size: 26px; font-weight: 800; letter-spacing: 1px;
+    background: #1e3d2a; color: #3e6b4d; border: 0;
+  }
+  .lamp-go:focus-visible { outline: 4px solid #fff; outline-offset: 3px; }
+  .signal.red .lamp-red { background: #ff4b3e; box-shadow: 0 0 14px #ff4b3e; }
+  .signal.amber .lamp-amber { background: #ffb21e; box-shadow: 0 0 14px #ffb21e; }
+  .signal.green .lamp-go { background: radial-gradient(circle at 40% 35%, #7dffa0, #2fbf55 60%); color: #fff; text-shadow: 0 1px 2px rgba(0,0,0,.35); animation: goGlow 1.1s ease-in-out infinite alternate; }
+  .signal.go .lamp-go { animation: goFlash .15s linear 4 alternate; }
+  @keyframes goGlow { from { box-shadow: 0 0 10px #48e070; transform: scale(1); } to { box-shadow: 0 0 26px #48e070; transform: scale(1.06); } }
+  @keyframes goFlash { to { background: #eafff0; } }
+  .signal.nudge { animation: nudge .45s; }
+  @keyframes nudge { 20%, 60% { transform: translateX(-6px); } 40%, 80% { transform: translateX(6px); } }
+  .start-hint.wait { color: var(--muted); }
+  /* iPhone/iPad: while the train pulls in, the hint reminds grown-ups that silent mode mutes the narration */
+  .start-hint .tip-short { display: none; }
+  @media (max-width: 360px) { .start-hint .tip-long { display: none; } .start-hint .tip-short { display: inline; } }
+  @media (max-height: 700px) {
+    .sig-head { gap: 4px; padding: 6px; }
+    .lamp-red, .lamp-amber { width: 20px; height: 20px; }
+    .lamp-go { width: 72px; height: 72px; font-size: 22px; }
+  }
+  .start-track { position: relative; overflow: hidden; padding: 8px 0 16px; }
+  .start-track::after { content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 12px; background: repeating-linear-gradient(90deg, #6b5b4b 0 18px, #8b7b6b 18px 30px); border-radius: 3px; }
+  .start-train {
+    position: relative; z-index: 1; display: flex; gap: 6px; width: 100%; max-width: 560px; margin: 0 auto;
+    padding: 0 0 20px; background: none; border-radius: 16px;
+    animation: pullIn 1.7s both;
+  }
+  .start-train:focus-visible { outline: 4px solid var(--ink); outline-offset: 4px; }
+  .start-train.leaving { animation: driveOff 1.1s cubic-bezier(.55,0,.9,.45) forwards; }
+  @keyframes pullIn {
+    0% { transform: translateX(-120vw); animation-timing-function: cubic-bezier(.15,.7,.35,1); }
+    82% { transform: translateX(12px); animation-timing-function: ease-in-out; }
+    100% { transform: none; }
+  }
+  .start-train.swapping { animation: driveOff .6s cubic-bezier(.55,0,.9,.45) forwards; }
+  @keyframes driveOff { to { transform: translateX(120vw); } }
+  .st-car {
+    flex: 1; height: 88px; display: flex; align-items: flex-start; gap: 6px; padding: 14px 10px 0;
+    background:
+      linear-gradient(to bottom, transparent 66%, var(--line) 66% 77%, transparent 77% 81%, var(--line) 81% 86%, transparent 86%),
+      repeating-linear-gradient(115deg, transparent 0 46px, rgba(255,255,255,.32) 46px 56px, transparent 56px 66px, rgba(255,255,255,.16) 66px 70px, transparent 70px 130px),
+      linear-gradient(to bottom, transparent 9px, #b4cfe2 9px, #5a7d98 58px, transparent 58px),
+      linear-gradient(#fdfdfe, #d9e0e7);
+    background-size: auto, 100% 49px, auto, auto; background-position: 0 0, 0 9px, 0 0, 0 0; background-repeat: no-repeat;
+    border-radius: 10px; box-shadow: inset 0 -5px 0 #8f9ba7, 0 4px 0 rgba(0,0,0,.15);
+  }
+  .start-train.waiting .st-car { animation: idle 1s ease-in-out infinite alternate; }
+  .start-train.waiting .st-car:last-of-type { animation-delay: .15s; }
+  @keyframes idle { to { transform: translateY(-3px); } }
+  .st-win { flex: 1; height: 34px; border-radius: 4px; border: 2px solid rgba(29,40,52,.3);
+    background: linear-gradient(115deg, transparent 0 35%, rgba(255,255,255,.45) 35% 50%, transparent 50%), linear-gradient(#d3e6f3, #8fb1ca); }
+  .st-lead { flex: 2; border-radius: 10px 52px 10px 10px; justify-content: space-between; padding-right: 8px; }
+  .st-cab { flex: none; width: 34px; height: 46px; margin-top: -5px; background: linear-gradient(150deg, rgba(255,255,255,.55) 0 14%, transparent 14% 24%, rgba(255,255,255,.25) 24% 29%, transparent 29%), linear-gradient(#9cbdd5, #3d5c74); border-radius: 6px 30px 4px 6px; }
+  .st-wheels { position: absolute; left: 7%; right: 7%; bottom: 2px; display: flex; justify-content: space-between; }
+  .st-wheels i {
+    width: 26px; height: 26px; border-radius: 50%; border: 5px solid #777;
+    background: linear-gradient(90deg, transparent 42%, #aaa 42% 58%, transparent 58%), linear-gradient(0deg, transparent 42%, #aaa 42% 58%, transparent 58%), #333;
+    animation: spin .5s linear infinite; animation-play-state: paused;
+  }
+  .start-train:not(.waiting) .st-wheels i { animation-play-state: running; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* Compact start screen: everything fits on one page above the dock, centred in the space left. */
+  #home.screen { gap: 10px; padding-top: 12px; min-height: 100vh; min-height: 100dvh; justify-content: center; }
+  #home h2 { font-size: 18px; margin: 0; }
+  #home .lines { grid-template-columns: repeat(3, 1fr); gap: 8px; }
+  #home .line-btn {
+    min-height: 0; height: 78px; padding: 8px 6px; border-radius: 16px; text-align: center;
+    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px;
+  }
+  #home .line-btn .code { font-size: 28px; line-height: 1; }
+  #home .line-btn .name { font-size: 12px; line-height: 1.15; }
+  #home .line-btn .badge { top: 3px; right: 6px; font-size: 16px; }
+  #home .choices { flex-wrap: nowrap; gap: 8px; }
+  #home .pill { flex: 1 1 0; min-width: 0; padding: 12px 4px; font-size: 18px; border-radius: 16px; }
+  #home .pill small { font-size: 12px; }
+  #home .start-hint { font-size: 16px; }
+  @media (max-height: 600px) {
+    #home .line-btn { height: 62px; }
+    #home .line-btn .code { font-size: 22px; }
+    #home .line-btn .name { font-size: 10px; }
+    #home .pill { padding: 8px 2px; font-size: 15px; }
+    #home h2 { font-size: 16px; }
+  }
+
+  /* Phone held sideways: too short for a bottom dock, so the train and signal move to the right side. */
+  @media (orientation: landscape) and (max-height: 500px) {
+    .start-dock {
+      left: auto; top: 0; width: min(42vw, 340px); display: flex; flex-direction: column; justify-content: flex-end; gap: 6px;
+      padding: 8px 16px var(--deck); box-shadow: none;
+    }
+    .start-dock > * { width: 100%; }
+    .start-train .st-car:first-child { display: none; }
+    .start-train .st-wheels i:nth-child(5) { display: none; }
+    #home .line-btn { height: 58px; }
+    #home .line-btn .code { font-size: 22px; }
+    #home .line-btn .name { font-size: 10px; }
+    #home .pill { padding: 6px 2px; font-size: 15px; }
+    #home h2 { font-size: 15px; }
+    #home.screen { gap: 6px; padding-top: 8px; }
+  }
+
+  /* Start screen scenery: an elevated MRT station on a sunny day. Sky and drifting clouds behind the
+     choices; HDB flats, trees and a concrete viaduct behind the docked train. Images are SVG tiles made
+     in paintStation(); body[data-screen] is set by show(). */
+  body[data-screen="home"] {
+    background: radial-gradient(circle at 88% 6%, rgba(255,246,196,.95) 0 34px, rgba(255,246,196,.35) 35px 70px, transparent 110px),
+      linear-gradient(#6ec1ff, #bfe6ff 55%, #e6f6ff);
+    background-attachment: fixed;
+  }
+  body[data-screen="home"]::before {
+    content: ""; position: fixed; z-index: -1; inset: 6px 0 auto; height: 120px; pointer-events: none;
+    background-image: var(--clouds); background-repeat: repeat-x; background-size: 420px 120px;
+    animation: clouds 90s linear infinite;
+  }
+  @keyframes clouds { to { background-position-x: 420px; } }
+  #home h2 { text-shadow: 0 1px 0 rgba(255,255,255,.7); }
+  #home .pill:not(.sel) { background: rgba(255,255,255,.92); }
+  .start-dock {
+    --deck: calc(24px + env(safe-area-inset-bottom, 0px));
+    padding-bottom: var(--deck); box-shadow: none;
+    background:
+      /* viaduct deck with a darker top edge and the piers' shadow lines */
+      linear-gradient(#8e887d 0 5px, transparent 5px) 0 100% / 100% var(--deck) no-repeat,
+      repeating-linear-gradient(90deg, transparent 0 96px, rgba(0,0,0,.13) 96px 112px) 0 100% / 100% var(--deck) no-repeat,
+      linear-gradient(#c3bdb2, #a8a297) 0 100% / 100% var(--deck) no-repeat,
+      /* HDB flats and trees standing behind the train */
+      var(--hdb) 0 calc(100% - var(--deck)) / 480px 230px repeat-x,
+      transparent;
+  }
+  .start-hint { background: rgba(255,255,255,.85); border-radius: 999px; padding: 2px 14px; width: fit-content; margin-inline: auto; }
+
+  /* start station chip in the dock */
+  .dock-row { display: flex; align-items: center; justify-content: center; gap: 8px; flex-wrap: wrap; }
+  .start-chip {
+    background: #fff; border-radius: 999px; padding: 6px 14px; font-size: 16px; font-weight: bold;
+    box-shadow: 0 3px 0 rgba(0,0,0,.15); border: 3px solid var(--line); max-width: 60vw; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  #home .start-hint { margin: 0; }
+
+  /* play time: the grown-ups' button (start screen, top right), the settings, and the sleeping train */
+  .gate-card, .parent-card { max-width: 420px; }
+  .gate-q { margin: 0; font-size: 26px; font-weight: 800; text-align: center; }
+  .gate-row { display: flex; gap: 10px; }
+  .gate-row input { flex: 1; min-width: 0; font: inherit; font-size: 28px; text-align: center; border: 3px solid #c9d3dc; border-radius: 14px; padding: 6px; }
+  .gate-row .go { margin: 0; padding: 8px 22px; font-size: 22px; }
+  .gate-msg { margin: 0; min-height: 1.3em; text-align: center; color: var(--bad); }
+  .p-limits { display: flex; flex-wrap: wrap; gap: 8px; }
+  .p-limits .pill { flex: 1 1 28%; }
+  .p-note, .p-today { margin: 0; font-size: 15px; color: var(--muted); }
+  .p-today { color: var(--ink); font-weight: 700; }
+  .p-row { display: grid; gap: 8px; }
+  .end-time { margin: 0; font-size: 14px; color: var(--muted); }
+  .end-time:empty { display: none; }
+  .stops-pill { position: absolute; z-index: 4; top: 8px; right: 8px; background: #1f2a44; color: #ffe9a8; border-radius: 999px; padding: 2px 10px; font-size: 15px; font-weight: 800; line-height: 1.5; box-shadow: 0 2px 0 rgba(0,0,0,.2); pointer-events: none; }
+  .stops-pill[hidden] { display: none; }
+  #gate, #parent { z-index: 50; }
+  .overlay.sleep { z-index: 40; background: linear-gradient(#0c1734, #2a3a63); }
+  .sleep-card { position: relative; max-width: 420px; text-align: center; color: #fff; display: flex; flex-direction: column; align-items: center; gap: 14px; }
+  .sleep-card h2 { margin: 0; font-size: 30px; }
+  .sleep-card p { margin: 0; font-size: 19px; color: #d6e2f5; }
+  .sleep-btn { margin-top: 24px; border: 2px solid rgba(255,255,255,.45); border-radius: 999px; background: transparent; color: #d6e2f5; font: inherit; font-size: 16px; padding: 8px 18px; }
+  .sleep-moon { width: 70px; height: 70px; border-radius: 50%; box-shadow: inset 18px -8px 0 0 #f4eec4; transform: rotate(-20deg); }
+  .sleep-train { position: relative; width: 240px; margin-bottom: 22px; }
+  .sleep-train .mini-train { animation: none; }
+  .sleep-train i { position: absolute; right: 18px; top: -8px; color: #cfe0ff; font: italic 800 22px system-ui, sans-serif; opacity: 0; animation: zzz 3s ease-out infinite; }
+  .sleep-train i:nth-of-type(2) { animation-delay: 1s; } .sleep-train i:nth-of-type(3) { animation-delay: 2s; font-size: 30px; }
+  @keyframes zzz { 0% { opacity: 0; transform: translate(0, 0); } 20% { opacity: 1; } 100% { opacity: 0; transform: translate(26px, -60px); } }
+
+  /* overlays: start picker, MRT map, interchange choice */
+  .overlay { position: fixed; inset: 0; z-index: 30; display: flex; align-items: center; justify-content: center; padding: 12px; background: rgba(15,25,35,.55); }
+  .overlay[hidden] { display: none; }
+  .ov-card { background: #fff; border-radius: 22px; width: 100%; max-width: 720px; max-height: calc(100dvh - 24px); display: flex; flex-direction: column; gap: 10px; padding: 12px; box-shadow: 0 8px 0 rgba(0,0,0,.2); }
+  .ov-head { display: flex; align-items: center; gap: 10px; font-size: 19px; }
+  .ov-head b { flex: 1; }
+  .map-scroll { overflow: auto; border-radius: 14px; background: #eef6fb; flex: none; max-height: 46dvh; -webkit-overflow-scrolling: touch; }
+  #mapView .map-scroll { max-height: calc(100dvh - 140px); flex: 1; }
+  .map-scroll svg { display: block; width: 960px; height: auto; }
+  .map-key { margin: 0; text-align: center; font-size: 13px; color: var(--muted); }
+  .mst.pickable { cursor: pointer; }
+  .here-ring { transform-box: fill-box; transform-origin: center; animation: hereRing 1.2s ease-out infinite; }
+  @keyframes hereRing { from { transform: scale(.6); opacity: 1; } to { transform: scale(1.8); opacity: 0; } }
+  /* start picker: the map is the picker, so it fills the card and is drawn larger */
+  #picker .map-scroll { max-height: none; flex: 1; min-height: 0; }
+  #picker .map-scroll svg { width: 1300px; }
+  #picker .ov-card { height: calc(100dvh - 24px); }
+  .pick-label { cursor: pointer; }
+  .dir-row { display: grid; gap: 10px; flex: none; }
+  .dir-row[hidden] { display: none; }
+  /* Every direction choice is a platform sign: platform letter, line, "towards" destination, an arrow,
+     and the next stops on a strip like the route map above the train doors. */
+  .psign {
+    display: flex; flex-direction: column; gap: 8px; width: 100%; text-align: left; border: 0; border-radius: 12px; padding: 10px 12px;
+    background: linear-gradient(#262e36, #12181e); color: #fff; box-shadow: 0 5px 0 rgba(0,0,0,.3), inset 0 0 0 2px #3a4651;
+  }
+  .psign:active { transform: translateY(3px); box-shadow: 0 2px 0 rgba(0,0,0,.3), inset 0 0 0 2px #3a4651; }
+  .psign .top { display: flex; align-items: center; gap: 10px; }
+  .psign .plat { flex: none; width: 46px; height: 46px; border-radius: 10px; background: #f2c94c; color: #12181e; font-weight: 900; font-size: 26px; display: flex; align-items: center; justify-content: center; }
+  .psign .txt { flex: 1; min-width: 0; }
+  .psign .to { font-size: 12px; color: #b9c4cf; letter-spacing: .4px; text-transform: uppercase; line-height: 1.3; }
+  .psign .to .lc { display: inline-block; color: #fff; font-weight: 800; border-radius: 5px; padding: 0 5px; margin-right: 4px; letter-spacing: 0; }
+  .psign .dest { font-size: 21px; font-weight: 800; line-height: 1.15; }
+  .psign .arrow { flex: none; width: 44px; height: 44px; border-radius: 50%; background: #fff; color: #12181e; font-size: 28px; font-weight: 900; display: flex; align-items: center; justify-content: center; }
+  .psign .strip { display: flex; align-items: center; padding: 0 4px; }
+  .psign .strip i { flex: none; width: 12px; height: 12px; border-radius: 50%; background: #fff; border: 3px solid var(--c); }
+  .psign .strip b { flex: 1; height: 5px; background: var(--c); }
+  .psign .names { display: flex; gap: 4px; font-size: 11px; line-height: 1.15; color: #b9c4cf; }
+  .psign .names span { flex: 1; text-align: center; }
+  .psign .names span:first-child { text-align: left; color: #fff; font-weight: bold; }
+  .psign .names span:last-child { text-align: right; }
+  .psign.end .plat { background: #fff; }
+  .xchg-card { max-width: 440px; text-align: center; overflow: auto; }
+  .xchg-card h3 { margin: 4px 0 0; font-size: 23px; }
+  .xchg-sub { margin: 0; color: var(--muted); font-size: 17px; }
+  .x-opts { display: grid; gap: 10px; }
+
+  /* surprises during the ride */
+  .sitem { position: absolute; z-index: 3; font-size: 30px; line-height: 1; pointer-events: none; animation: bob 1.4s ease-in-out infinite alternate; transition: transform .9s ease-in, opacity .9s; }
+  .sitem.away { transform: translate(140px, -120px) !important; opacity: 0; }
+  @keyframes bob { to { transform: translateY(-8px); } }
+
+  /* long lines: small dots on the route strip */
+
+  /* ---------- Game ---------- */
+  .topbar { display: flex; align-items: center; gap: 8px; }
+  .icon-btn { background: var(--card); border-radius: 14px; width: 48px; height: 48px; font-size: 24px; box-shadow: var(--shadow); flex: none; }
+  .topbar { justify-content: space-between; }
+  /* play time left today (only with a limit set), counting down while riding */
+  .clock { background: #1f2a44; color: #ffe9a8; border-radius: 14px; padding: 10px 14px; font: 800 20px ui-monospace, Menlo, Consolas, monospace; box-shadow: var(--shadow); font-variant-numeric: tabular-nums; }
+  .clock[hidden] { display: none; }
+  /* start screen, top right: today's play time left; tapping it opens the grown-ups' settings */
+  .home-clock { position: fixed; z-index: 6; top: calc(8px + env(safe-area-inset-top, 0px)); right: calc(8px + env(safe-area-inset-right, 0px)); border: 0; background: rgba(255,255,255,.85); color: var(--ink); border-radius: 999px; padding: 5px 12px; font: inherit; font-size: 15px; font-weight: 800; box-shadow: 0 2px 0 rgba(0,0,0,.1); }
+  body:not([data-screen="home"]) .home-clock { display: none; }
+  .stars { font-size: 20px; background: var(--card); border-radius: 14px; padding: 10px 12px; box-shadow: var(--shadow); white-space: nowrap; }
+
+  /* Route strip: the line's first and last stations named at the two ends, and a close-up "window" of big dots
+     for the stations around the train (more of them ahead than behind). "⋯" shows the line carries on. */
+  .route { display: flex; align-items: center; gap: 8px; margin: 6px 0 0; height: 42px; }
+  .route { gap: 6px; }
+  .route .end { flex: none; max-width: 66px; font-size: 11.5px; font-weight: 800; line-height: 1.1; color: var(--ink); text-align: center; overflow-wrap: anywhere; }
+  .route .rail-box { position: relative; flex: 1; min-width: 0; height: 42px; }
+  .route .track { position: absolute; left: 0; right: 0; top: 27px; height: 8px; margin-top: -4px; border-radius: 4px; background: var(--line); opacity: .35; }
+  .route .done { position: absolute; left: 0; top: 27px; height: 8px; margin-top: -4px; border-radius: 4px; background: var(--line); }
+  .route .dot { position: absolute; top: 27px; width: 18px; height: 18px; border-radius: 50%; background: #fff; border: 4px solid var(--line); transform: translate(-50%, -50%); }
+  .route .dot.passed { background: var(--line); }
+  .route .more { position: absolute; top: 27px; transform: translateY(-50%); background: var(--bg); color: var(--line); font-weight: 900; font-size: 18px; line-height: 1; padding: 0 2px; }
+  .route .more.l { left: 0; } .route .more.r { right: 0; }
+  .route .marker { position: absolute; top: -2px; margin-left: -13px; font-size: 24px; }
+
+  .signrow { display: flex; justify-content: center; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .icon-btn.off { opacity: .45; }
+  /* station sign ("Start", "Now at", "Next stop") styled like an MRT platform sign: line badges for every
+     line that stops here (current line first), the station name, and an arrow for the next stop */
+  .sign {
+    align-self: center; display: flex; gap: 10px; align-items: center; min-width: 0; max-width: 100%;
+    background: linear-gradient(#262e36, #12181e); color: #fff; border-radius: 12px; padding: 7px 12px;
+    box-shadow: 0 4px 0 rgba(0,0,0,.25), inset 0 0 0 2px #3a4651;
+  }
+  .sign-lines { display: flex; flex-direction: column; gap: 3px; flex: none; }
+  .sign-lines .lc { color: #fff; font-weight: 800; font-size: 13px; border-radius: 5px; padding: 1px 6px; text-align: center; }
+  .sign-txt { display: flex; flex-direction: column; min-width: 0; }
+  .sign .lbl { color: #b9c4cf; font-size: 11px; letter-spacing: .5px; text-transform: uppercase; line-height: 1.2; }
+  .sign-name { font-size: 21px; font-weight: 800; line-height: 1.15; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .sign-arrow { flex: none; width: 32px; height: 32px; border-radius: 50%; background: #fff; color: #12181e; font-size: 22px; font-weight: 900; display: flex; align-items: center; justify-content: center; }
+  .sign-arrow[hidden] { display: none; }
+
+  .scene {
+    --sky1: #cfeaff; --sky2: #f6fcff;
+    --sky: 84px; --floor: 86px; --paxh: 70px; --seat: 34px; /* the sky above the train, the platform, a person's height, a seat */
+    position: relative; overflow: hidden; border-radius: 26px; background: linear-gradient(var(--sky1), var(--sky2) 70%); box-shadow: 0 12px 24px -14px rgba(40,70,110,.55);
+  }
+  /* time of day and weather (set by applyEnv() as data attributes on the scene) */
+  .scene[data-time="morning"] { --sky1: #ffd2a8; --sky2: #e3f3ff; }
+  .scene[data-time="evening"] { --sky1: #ff925f; --sky2: #ffd7a1; }
+  .scene[data-time="night"] { --sky1: #0c1734; --sky2: #2a3a63; }
+  .scene[data-weather="cloudy"] { --sky1: #b6c4d2; --sky2: #e1e8ee; }
+  .scene[data-weather="rain"] { --sky1: #8a9bad; --sky2: #c1cbd5; }
+  .scene[data-weather="storm"] { --sky1: #5b6a7a; --sky2: #96a3b0; }
+  .scene[data-time="night"][data-weather="cloudy"] { --sky1: #141b28; --sky2: #2f3a4d; }
+  .scene[data-time="night"][data-weather="rain"], .scene[data-time="night"][data-weather="storm"] { --sky1: #0f141c; --sky2: #27303d; }
+  .scene[data-time="night"] .layer { filter: brightness(.42) saturate(.6); }
+  .scene[data-time="night"][data-place="open"] .stage .floor, .scene[data-time="night"][data-place="open"] .stage::before { filter: brightness(.62); }
+  .scene[data-time="evening"] .layer { filter: sepia(.25) brightness(.9); }
+  .scene[data-weather="rain"] .layer, .scene[data-weather="storm"] .layer { filter: brightness(.78) saturate(.6); }
+  .scene[data-time="night"][data-weather="rain"] .layer, .scene[data-time="night"][data-weather="storm"] .layer { filter: brightness(.35) saturate(.5); }
+  .sky-body { position: absolute; z-index: 0; top: 8px; right: 18px; width: 30px; height: 30px; border-radius: 50%; background: #ffd84a; box-shadow: 0 0 18px 6px rgba(255,216,74,.55); }
+  .scene[data-time="morning"] .sky-body { top: 26px; background: #ffc76a; }
+  .scene[data-time="evening"] .sky-body { top: 30px; background: #ff7a3d; box-shadow: 0 0 22px 8px rgba(255,122,61,.5); }
+  .scene[data-time="night"] .sky-body { background: transparent; box-shadow: inset 9px -4px 0 0 #f4eec4; } /* a crescent moon */
+  .scene:not([data-weather="sunny"]) .sky-body { opacity: .25; }
+  .sky-stars { position: absolute; z-index: 0; inset: 0 0 auto; height: 70px; opacity: 0; pointer-events: none;
+    background: radial-gradient(1.5px 1.5px at 20px 14px, #fff 99%, transparent), radial-gradient(1px 1px at 70px 40px, #fff 99%, transparent),
+      radial-gradient(1.5px 1.5px at 130px 22px, #fff 99%, transparent), radial-gradient(1px 1px at 170px 52px, #fff 99%, transparent),
+      radial-gradient(1.5px 1.5px at 215px 10px, #fff 99%, transparent);
+    background-size: 240px 70px; }
+  .scene[data-time="night"]:not([data-weather="rain"]):not([data-weather="storm"]) .sky-stars { opacity: .9; }
+  .sky-clouds { position: absolute; z-index: 0; inset: 0 0 auto; height: 70px; opacity: 0; pointer-events: none;
+    background: var(--clouds) 0 -6px / 300px 90px repeat-x; animation: skyDrift 50s linear infinite; }
+  @keyframes skyDrift { to { background-position-x: 300px; } }
+  .scene[data-weather="sunny"] .sky-clouds { opacity: .55; }
+  .scene[data-weather="cloudy"] .sky-clouds { opacity: .95; }
+  .scene[data-weather="rain"] .sky-clouds { opacity: 1; filter: brightness(.72); }
+  .scene[data-weather="storm"] .sky-clouds { opacity: 1; filter: brightness(.5); }
+  .scene[data-time="night"] .sky-clouds { filter: brightness(.3); }
+  /* rain falls behind the train (so the passengers stay easy to count); storms add lightning flashes
+     in the sky. Neither shows underground. */
+  .rain { position: absolute; z-index: 0; inset: 0; opacity: 0; pointer-events: none;
+    background: repeating-linear-gradient(104deg, transparent 0 11px, rgba(225,238,255,.6) 11px 12px) 0 0 / 64px 64px;
+    animation: rainFall .35s linear infinite; }
+  @keyframes rainFall { to { background-position: -16px 64px; } }
+  .scene[data-weather="rain"] .rain { opacity: .7; }
+  .scene[data-weather="storm"] .rain { opacity: .95; animation-duration: .25s; }
+  .flash { position: absolute; z-index: 0; inset: 0; opacity: 0; pointer-events: none; background: #fff; }
+  .scene[data-weather="storm"] .flash { animation: lightning 7s linear infinite; }
+  @keyframes lightning { 0%, 88% { opacity: 0; } 89% { opacity: .75; } 90% { opacity: 0; } 92% { opacity: .5; } 93%, 100% { opacity: 0; } }
+  .scene[data-place="ug"] .rain, .scene[data-place="ug"] .flash { opacity: 0 !important; animation: none; }
+  /* underground platform: ceiling with strip lights, tiled wall and a band in the line colour */
+  .indoor { position: absolute; z-index: 0; inset: 0; opacity: 0; pointer-events: none;
+    background:
+      repeating-linear-gradient(90deg, transparent 0 30px, #fff6d5 30px 96px, transparent 96px 130px) 0 9px / 100% 6px no-repeat,
+      linear-gradient(#2b3440, #2b3440) 0 0 / 100% 24px no-repeat,
+      linear-gradient(var(--line), var(--line)) 0 46px / 100% 8px no-repeat,
+      repeating-linear-gradient(0deg, transparent 0 19px, #d5dde4 19px 20px),
+      repeating-linear-gradient(90deg, transparent 0 39px, #d5dde4 39px 40px),
+      #f3f6f9; }
+  .scene[data-place="ug"] .indoor { opacity: 1; }
+  .env-pill { position: absolute; z-index: 4; top: 8px; left: 8px; background: rgba(255,255,255,.88); border-radius: 999px; padding: 1px 8px; font-size: 15px; line-height: 1.5; box-shadow: 0 2px 0 rgba(0,0,0,.12); pointer-events: none; }
+  /* ---- The station, drawn in a storybook style: flat shapes, soft colours, no outlines. The train is seen
+     straight on from the platform; the sky shows above it, with HDB flats and trees peeking over the roof. ---- */
+  .layer { position: absolute; left: 0; right: 0; top: 0; height: var(--sky); background-repeat: repeat-x; background-position: 0 100%; background-size: auto 100%; pointer-events: none; }
+  .layer.far { opacity: .6; background-position: 70px 100%; }
+  .layer.near { height: calc(var(--sky) + 26px); } /* its feet are hidden behind the train */
+  .stage { position: relative; z-index: 1; padding-top: var(--sky); }
+  /* behind the train (seen when it's away): the far wall of the station and the track */
+  .stage::before { content: ""; position: absolute; left: 0; right: 0; top: var(--sky); bottom: var(--floor);
+    background: linear-gradient(#f4f7fa, #f4f7fa) 0 calc(100% - 6px) / 100% 3px no-repeat, linear-gradient(#f4f7fa, #f4f7fa) 0 calc(100% - 15px) / 100% 3px no-repeat,
+      linear-gradient(#d6dde5 0 5px, #e9eff5 5px calc(100% - 24px), #a79d90 calc(100% - 24px)); }
+  .carbox { position: relative; }
+  /* air-conditioning units on the roof */
+  .carbox::before { content: ""; position: absolute; left: 0; right: 0; top: -10px; height: 11px; pointer-events: none;
+    background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='116' height='11'%3E%3Crect x='32' width='52' height='16' rx='4' fill='%23cfd7df'/%3E%3C/svg%3E") 50% 0 repeat-x; }
+  /* The train: a cream body with a roof edge, two stripes in the line colour and a grey skirt. The cars behind
+     it run off to the left, so it can drive away to the right. No operator branding. */
+  .train {
+    position: relative; display: flex; justify-content: center; align-items: stretch; gap: 8px;
+    margin-left: -700px; padding: 12px 0 24px 700px;
+    background:
+      var(--cars) 0 0 / 696px 100% no-repeat,
+      linear-gradient(var(--line), var(--line)) 0 calc(100% - 16px) / 100% 9px no-repeat,
+      linear-gradient(rgba(251,250,245,.45), rgba(251,250,245,.45)) 0 calc(100% - 10px) / 100% 3px no-repeat,
+      linear-gradient(var(--line), var(--line)) 0 calc(100% - 10px) / 100% 3px no-repeat,
+      linear-gradient(var(--skirt), var(--skirt)) 0 100% / 100% 12px no-repeat,
+      linear-gradient(var(--roof), var(--roof)) 0 0 / 100% 5px no-repeat,
+      var(--body);
+  }
+  .scene { --body: #fbfaf5; --roof: #e1e6ec; --skirt: #e6e9ee; --leaf: #eef2f5; }
+  .scene[data-time="night"][data-place="open"] { --body: #cfd5e0; --roof: #b3bcc9; --skirt: #b9c0cc; --leaf: #c6cdd9; } /* the train in the dark */
+  /* wider phones show the driver's end: a rounded nose with a windscreen and a headlight, and the gap to the next car */
+  @media (min-width: 372px) {
+    .train { margin-right: 8px; padding-right: 62px; border-radius: 0 44px 0 0 / 0 52px 0 0; }
+    .train::after { content: ""; position: absolute; right: 9px; top: 14px; width: 34px; height: 40px; border-radius: 4px 26px 4px 4px;
+      background: linear-gradient(115deg, rgba(255,255,255,.5) 0 22%, transparent 22%), #b9dcee; }
+    .train::before { content: ""; position: absolute; left: 704px; top: 5px; bottom: 0; width: 5px; background: rgba(154,166,178,.7); }
+    .carbox::after { content: ""; position: absolute; right: 15px; bottom: 32px; width: 9px; height: 9px; border-radius: 50%; background: #ffe27a; }
+  }
+  /* full-height double sliding doors that open to the inside */
+  .door { position: relative; flex: none; width: 30px; margin: -4px 0 -24px; border-radius: 5px; overflow: hidden;
+    background: linear-gradient(90deg, transparent 44%, #f2c94c 44% 56%, transparent 56%), linear-gradient(#66768f, #8c9bb1); /* inside: a yellow grab pole */ box-shadow: 0 0 0 1.5px #bcc7d2; }
+  .door i { position: absolute; top: 0; bottom: 0; width: 50%; background: var(--leaf); transition: transform .6s ease-in-out; }
+  .door i:first-child { left: 0; box-shadow: inset -1px 0 0 #bcc7d2; }
+  .door i:last-child { right: 0; }
+  .door i::after { content: ""; position: absolute; left: 3px; right: 2.5px; top: 9px; height: 38px; border-radius: 4px; background: #bcdaec; }
+  .train.open .door i:first-child { transform: translateX(-100%); }
+  .train.open .door i:last-child { transform: translateX(100%); }
+  /* The window shows 10 seats in two rows of 5 (a "ten-frame"): the first five blue, the second five orange.
+     Passengers fill them in order, so 7 reads as "5 and 2 more"; empty seats are pale. */
+  .window {
+    flex: none; display: grid; grid-template-columns: repeat(5, var(--seat)); gap: 4px; padding: 4px 6px; border-radius: 13px; border: 3.5px solid #3a4758;
+    background: linear-gradient(108deg, transparent 0 7%, rgba(255,255,255,.4) 7% 17%, transparent 17% 22%, rgba(255,255,255,.4) 22% 26%, transparent 26%), #dbeffb;
+  }
+  .seat { --back: #c9def5; --pad: #e3eefb; position: relative; aspect-ratio: 1 / 1; border-radius: 8px; background: var(--back); }
+  .seat::before { content: ""; position: absolute; inset: 27% 7% 6%; border-radius: 6px; background: var(--pad); }
+  .seat:nth-child(n+6) { --back: #f8d9bd; --pad: #fdeee0; }
+  .seat.full { --back: #5f9be0; --pad: #8ec0f2; }
+  .seat.full:nth-child(n+6) { --back: #e99555; --pad: #f7b984; }
+  /* at night the carriage lights are on: a warm window that glows */
+  .scene[data-time="night"] .window { background-color: #fff3cf; box-shadow: 0 0 16px 3px rgba(255,236,170,.6); }
+  /* the platform: a studded yellow safety line, then tiles drawn in perspective (--tiles, from paintScenery()) */
+  .stage .floor { display: block; position: relative; height: var(--floor); pointer-events: none;
+    background:
+      radial-gradient(circle, #d9a520 1.2px, transparent 1.6px) 0 0.4px / 7px 4.5px repeat-x,
+      radial-gradient(circle, #d9a520 1.2px, transparent 1.6px) 3.5px 4.6px / 7px 4.5px repeat-x,
+      linear-gradient(#f6cf4f 0 9px, transparent 9px),
+      linear-gradient(rgba(29,43,74,.2), rgba(29,43,74,0)) 0 9px / 100% 16px no-repeat,
+      var(--tiles) 0 9px / 100% calc(100% - 9px) no-repeat, #e7edf3; }
+  .platform { position: absolute; z-index: 1; left: 0; right: 0; bottom: 8px; height: var(--paxh); padding: 0 8px; display: flex; justify-content: center; align-items: flex-end; }
+  .platform .note { align-self: center; color: var(--muted); font-size: 15px; line-height: 1.3; text-align: center; }
+  .cab { position: absolute; inset: 0; z-index: 3; width: 100%; height: 100%; opacity: 0; pointer-events: none; }
+
+  /* Passengers are drawn people (personEl()): each button holds a head-and-shoulders picture for a seat
+     and a whole body for the platform, and shows the one that fits where it is. */
+  .pax { position: relative; padding: 0; background: none; border-radius: 8px; line-height: 0; }
+  .pax svg { display: block; pointer-events: none; overflow: visible; }
+  .seat .pax { position: absolute; inset: 0; width: 100%; height: 100%; }
+  .seat .pax .bust { width: 100%; height: 100%; }
+  .seat .pax .body, .platform .pax .bust { display: none; }
+  .pax .body { flex: none; height: var(--paxh); width: calc(var(--paxh) * 36 / 70); }
+  .platform .pax { flex: 0 1 calc(var(--paxh) * .56); min-width: 0; height: var(--paxh); display: flex; justify-content: center; }
+  /* someone waiting to get on stands in a pool of yellow light, with a shadow at their feet */
+  .platform .pax::before { content: ""; position: absolute; z-index: -1; left: 50%; bottom: -4px; width: calc(var(--paxh) * .64); height: 13px; margin-left: calc(var(--paxh) * -.32); border-radius: 50%;
+    background: radial-gradient(closest-side, rgba(0,0,0,.24) 0 50%, rgba(255,226,122,.9) 52% 100%); }
+  .seat .pax.leaving { background: rgba(255,255,255,.6); box-shadow: 0 0 0 3px var(--bad); }
+  .pax.leaving::after { content: "👋"; position: absolute; right: -6px; top: -8px; font-size: 16px; line-height: 1; }
+  .pax .n { position: absolute; z-index: 1; left: 50%; top: -12px; transform: translateX(-50%); background: var(--ink); color: #fff; border-radius: 10px; font-size: 13px; line-height: 1.2; padding: 1px 6px; }
+  .pax.pop { animation: pop .4s ease-out; }
+  @keyframes pop { from { transform: scale(0); } 60% { transform: scale(1.3); } to { transform: scale(1); } }
+
+  /* a passenger walking between the platform and a train door */
+  .walker { position: absolute; z-index: 2; pointer-events: none; transform-origin: 50% 100%; }
+  .walker svg { display: block; width: 100%; height: 100%; overflow: visible; transform-origin: 50% 100%; animation: waddle .26s ease-in-out infinite alternate; }
+  .walker.bye::after { content: "👋"; position: absolute; right: -8px; top: -4px; font-size: 16px; line-height: 1; }
+  @keyframes waddle { from { transform: rotate(-6deg); } to { transform: rotate(6deg) translateY(-3px); } }
+
+  /* running count above the train while people get on/off */
+  .tally {
+    position: absolute; z-index: 2; top: 6px; left: 50%; transform: translateX(-50%);
+    background: #fff; color: var(--line); border-radius: 999px; padding: 4px 20px; font-size: 30px; font-weight: bold;
+    box-shadow: var(--shadow); opacity: 0; transition: opacity .3s; pointer-events: none; white-space: nowrap;
+  }
+  .tally.show { opacity: 1; }
+  .tally.done { color: var(--good); outline: 4px solid var(--good); }
+  .tally.bump { animation: bump .3s; }
+  @keyframes bump { 50% { transform: translateX(-50%) scale(1.3); } }
+
+  /* little train running along a track (home + end screens) */
+  .mini-track { position: relative; height: 92px; flex: none; overflow: hidden; border-radius: 18px; border-bottom: 8px solid #8b7b6b;
+    background: var(--hdb) 0 calc(100% + 4px) / 190px auto repeat-x, var(--clouds) 30px 4px / 200px auto repeat-x, linear-gradient(#bfe3ff, #eaf6ff); }
+  #end.sleepy .mini-track { background: var(--hdb) 0 calc(100% + 4px) / 190px auto repeat-x, radial-gradient(1.5px 1.5px at 30px 14px, #fff 99%, transparent) 0 0 / 90px 50px, linear-gradient(#0c1734, #2a3a63); }
+  #end.sleepy .mini-train { animation: none; left: calc(50% - 70px); filter: brightness(.75); }
+  .mini-train { position: absolute; bottom: 4px; display: flex; gap: 4px; animation: run 7s linear -2.5s infinite; }
+  .mini-train span {
+    width: 46px; height: 26px; border-radius: 4px; box-shadow: 0 2px 0 rgba(0,0,0,.15);
+    background: linear-gradient(to bottom, transparent 62%, var(--line) 62% 78%, transparent 78%),
+      linear-gradient(to bottom, transparent 4px, #b4cfe2 4px, #5a7d98 14px, transparent 14px), linear-gradient(#fdfdfe, #d5dce3);
+  }
+  .mini-train span:last-child { border-radius: 4px 16px 4px 4px; }
+  @keyframes run { from { left: -160px; } to { left: 100%; } }
+
+  .story { text-align: center; font-size: 19px; margin: 0; line-height: 1.35; }
+  .equation { min-height: 1.2em; text-align: center; font-size: clamp(44px, 13vw, 72px); font-weight: bold; letter-spacing: 2px; margin: 0; }
+  .equation .q { display: inline-block; min-width: 1.1em; color: var(--line); border-bottom: 6px dashed var(--line); }
+  .answers { min-height: 86px; display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+  .ans {
+    background: var(--card); border-radius: 22px; font-size: clamp(40px, 12vw, 60px); font-weight: bold;
+    padding: 10px 0; color: #24364b; border: 4px solid transparent; box-shadow: 0 6px 0 #d3deea, 0 16px 20px -12px rgba(40,70,110,.5);
+  }
+  .ans:active { transform: translateY(4px); box-shadow: 0 2px 0 #d3deea; }
+  .ans.wrong { background: #ffe1dd; border-color: var(--bad); opacity: .5; animation: shake .4s; }
+  .ans.right { background: #d9f7e1; border-color: var(--good); }
+  @keyframes shake { 0%,100%{transform:translateX(0)} 25%{transform:translateX(-8px)} 75%{transform:translateX(8px)} }
+  .spark { position: fixed; z-index: 20; font-size: 22px; line-height: 1; pointer-events: none; }
+  .stars.bump { animation: starBump .4s ease-out; }
+  @keyframes starBump { 40% { transform: scale(1.3); } }
+  .feedback { text-align: center; font-size: 22px; min-height: 30px; margin: 0; font-weight: bold; }
+  .feedback.good { color: var(--good); }
+  .feedback.bad { color: var(--bad); }
+  .tip { text-align: center; color: var(--muted); font-size: 14px; margin: 0; }
+
+  /* ---------- End ---------- */
+  #end { text-align: center; justify-content: center; }
+  #end .pill { flex: none; }
+  .big-emoji { font-size: 90px; animation: bounce 1s infinite alternate; }
+  @keyframes bounce { to { transform: translateY(-14px); } }
+  .end-stars { font-size: 34px; letter-spacing: 2px; word-break: break-all; }
+  .end-stars span { display: inline-block; animation: pop .4s ease-out both; }
+  .confetti { position: fixed; top: -40px; font-size: 28px; pointer-events: none; animation: fall linear forwards; z-index: 9; }
+  @keyframes fall { to { transform: translateY(110vh) rotate(540deg); } }
+
+  /* short phone screens: tighten the game screen so the answers fit */
+  @media (max-height: 700px) {
+    #game.screen.active { gap: 8px; padding-block: 10px; }
+    .route { height: 46px; }
+    .scene { --sky: 46px; --floor: 64px; --paxh: 60px; --seat: 32px; }
+    .tally { top: 4px; font-size: 24px; padding: 3px 16px; }
+    .big-emoji { font-size: 64px; }
+    .story { font-size: 17px; }
+    .equation { font-size: clamp(36px, 11vw, 60px); }
+    .ans { font-size: clamp(34px, 10vw, 52px); padding: 6px 0; }
+  }
+
+  @media (min-width: 600px) and (min-height: 701px) { .scene { --sky: 104px; --floor: 104px; --paxh: 86px; --seat: 46px; } }
+
+  @media (prefers-reduced-motion: reduce) {
+    body[data-screen="home"]::before { animation: none; }
+    .pax, .door i { transition: none; }
+    .walker svg, .pax.pop, .tally.bump, .sitem, .here-ring, .sky-clouds, .rain, .sleep-train i, .screen.active, .end-stars span, .stars.bump { animation: none; }
+    .sleep-train i { opacity: .8; }
+    .big-emoji, .confetti, .mini-train, .start-train, .start-train.leaving, .start-train.swapping, .signal.green .lamp-go, .signal.go .lamp-go, .signal.nudge, .st-car, .st-wheels i, .start-hint span { animation: none !important; }
+  }
+</style>
+</head>
+<body>
+
+<!-- HOME -->
+<section id="home" class="screen active">
+  <button class="home-clock" id="homeClock" aria-label="Play time left today (grown-ups: tap to change)">⏱️</button>
+  <h2>1. Pick your MRT line</h2>
+  <div class="lines" id="lineList"></div>
+
+  <h2>2. What happens at each station?</h2>
+  <div class="choices" id="modeList">
+    <button class="pill sel" data-mode="add">➕ Get on<small>adding</small></button>
+    <button class="pill" data-mode="sub">➖ Get off<small>taking away</small></button>
+    <button class="pill" data-mode="mix">🔀 Both<small>mixed</small></button>
+  </div>
+
+  <div class="start-dock">
+    <div class="dock-row">
+      <button class="start-chip" id="startPick" aria-label="Choose the station to start from">📍 Jurong East</button>
+      <p class="start-hint" id="startHint" aria-live="polite">Wait for green…</p>
+    </div>
+    <div class="start-track">
+      <button class="start-train" id="goBtn" aria-label="Tap the train to start">
+        <span class="st-car" aria-hidden="true"><i class="st-win"></i><i class="st-win"></i></span>
+        <span class="st-car st-lead" aria-hidden="true"><i class="st-win"></i><i class="st-win"></i><i class="st-cab"></i></span>
+        <span class="st-wheels" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></span>
+      </button>
+      <!-- railway signal: red while the train pulls in, amber as it brakes, green GO when it has stopped -->
+      <div class="signal red" id="signal">
+        <div class="sig-head">
+          <i class="lamp lamp-red" aria-hidden="true"></i>
+          <i class="lamp lamp-amber" aria-hidden="true"></i>
+          <button class="lamp lamp-go" id="goSignal" aria-label="Go! Start the game">GO</button>
+        </div>
+        <i class="sig-pole" aria-hidden="true"></i>
+      </div>
+    </div>
+  </div>
+
+</section>
+
+<!-- GAME -->
+<section id="game" class="screen">
+  <div class="topbar">
+    <button class="icon-btn" id="homeBtn" aria-label="Back to start">🏠</button>
+    <div class="clock" id="clock" role="timer" aria-label="Play time left" hidden></div>
+    <button class="icon-btn" id="soundBtn" aria-label="Sound on or off (music, voice and sounds)">🔊</button>
+  </div>
+
+  <div class="route" id="route"></div>
+
+  <div class="signrow">
+    <div class="sign" id="stationSign">
+      <span class="sign-lines" id="signLines"></span>
+      <span class="sign-txt"><span class="lbl" id="signLbl">Now at</span><span class="sign-name" id="stationName">Station</span></span>
+      <span class="sign-arrow" id="signArrow" aria-hidden="true" hidden>→</span>
+    </div>
+    <div class="stars" id="starCount">⭐ 0</div>
+    <button class="icon-btn" id="mapBtn" aria-label="Show the MRT map">🗺️</button>
+  </div>
+
+  <div class="scene" id="scene">
+    <div class="sky-body" aria-hidden="true"></div>
+    <div class="sky-stars" aria-hidden="true"></div>
+    <div class="sky-clouds" aria-hidden="true"></div>
+    <div class="layer far" id="layerFar"></div>
+    <div class="layer near" id="layerNear"></div>
+    <div class="indoor" aria-hidden="true"></div>
+    <div class="rain" aria-hidden="true"></div>
+    <div class="flash" aria-hidden="true"></div>
+    <div class="env-pill" id="envPill"></div>
+    <div class="stops-pill" id="stopsPill" hidden></div>
+    <!-- the station: the train (doors and a window of seats) at the platform, seen straight on -->
+    <div class="stage" id="stage">
+      <div class="carbox" id="carbox">
+        <div class="train open" id="train">
+          <div class="door"><i></i><i></i></div>
+          <div class="window" id="carriage"></div>
+          <div class="door"><i></i><i></i></div>
+        </div>
+      </div>
+      <i class="floor" aria-hidden="true"></i>
+      <div class="platform" id="platform"></div>
+    </div>
+    <div class="tally" id="tally"></div>
+    <!-- between stations: the driver's view out of the front window -->
+    <canvas class="cab" id="cab" aria-hidden="true"></canvas>
+  </div>
+
+  <p class="story" id="story"></p>
+  <p class="equation" id="equation"></p>
+  <div class="answers" id="answers"></div>
+  <p class="feedback" id="feedback"></p>
+  <p class="tip">Tip: tap the people to count them! Tap 🔊 to hear the question.</p>
+  <button class="icon-btn" id="sayBtn" style="align-self:center;width:auto;padding:0 18px" aria-label="Read the question aloud">🔊 Hear it again</button>
+</section>
+
+<!-- END -->
+<section id="end" class="screen">
+  <div class="big-emoji">🏆</div>
+  <h1 id="endTitle">You made it!</h1>
+  <p class="sub" id="endText"></p>
+  <div class="end-stars" id="endStars"></div>
+  <div class="mini-track" aria-hidden="true"><div class="mini-train"><span></span><span></span><span></span></div></div>
+  <button class="go" id="againBtn">Ride again 🔁</button>
+  <button class="pill" id="otherBtn">🗺️ Choose another line</button>
+  <button class="go" id="nightBtn" hidden>Good night, train 😴</button>
+  <p class="end-time" id="endTime"></p>
+</section>
+
+<!-- OVERLAYS -->
+<div class="overlay" id="picker" hidden>
+  <div class="ov-card" role="dialog" aria-labelledby="pickTitle">
+    <div class="ov-head"><b id="pickTitle">📍 Where do we start?</b><button class="icon-btn" id="pickClose" aria-label="Close">✕</button></div>
+    <div class="map-scroll" id="pickScroll"><svg id="pickMap" aria-label="MRT map"></svg></div>
+    <div class="dir-row" id="dirRow" hidden></div>
+  </div>
+</div>
+<div class="overlay" id="mapView" hidden>
+  <div class="ov-card" role="dialog" aria-labelledby="mapTitle">
+    <div class="ov-head"><b id="mapTitle">🗺️ MRT map</b><button class="icon-btn" id="mapClose" aria-label="Close">✕</button></div>
+    <div class="map-scroll" id="mapScroll"><svg id="bigMap" aria-label="MRT map showing where the train is"></svg></div>
+    <p class="map-key">🚆 You are here · ⭐ stations on this ride · drag to look around</p>
+  </div>
+</div>
+<div class="overlay" id="xchg" hidden>
+  <div class="ov-card xchg-card" role="dialog" aria-labelledby="xTitle">
+    <h3 id="xTitle">🔀 Interchange!</h3>
+    <p class="xchg-sub">Which train shall we take?</p>
+    <div class="x-opts" id="xOpts"></div>
+  </div>
+</div>
+
+<!-- play time: grown-up check, settings, and the sleeping train when today's time is used up -->
+<div class="overlay" id="gate" hidden>
+  <div class="ov-card gate-card" role="dialog" aria-labelledby="gateTitle">
+    <div class="ov-head"><b id="gateTitle">🔒 Grown-ups only</b><button class="icon-btn" id="gateClose" aria-label="Close">✕</button></div>
+    <p class="gate-q" id="gateQ"></p>
+    <div class="gate-row"><input id="gateIn" type="text" inputmode="numeric" pattern="[0-9]*" maxlength="3" autocomplete="off" aria-label="Answer"><button class="go" id="gateOk">OK</button></div>
+    <p class="gate-msg" id="gateMsg"></p>
+  </div>
+</div>
+<div class="overlay" id="parent" hidden>
+  <div class="ov-card parent-card" role="dialog" aria-labelledby="parentTitle">
+    <div class="ov-head"><b id="parentTitle">⏱️ Play time each day</b><button class="icon-btn" id="parentClose" aria-label="Close">✕</button></div>
+    <div class="p-limits" id="limitList">
+      <button class="pill" data-min="0">Off</button><button class="pill" data-min="10">10 min</button><button class="pill" data-min="15">15 min</button>
+      <button class="pill" data-min="20">20 min</button><button class="pill" data-min="30">30 min</button>
+    </div>
+    <p class="p-note">A ⏱️ clock counts down while riding, and the sky turns from morning to night. Near the end the train makes 2 more stops, then goes to sleep until tomorrow.</p>
+    <p class="p-today" id="pToday"></p>
+    <div class="p-row"><button class="pill" id="plusBtn">➕ 5 more minutes today</button><button class="pill" id="resetBtn">🔄 Start today again</button></div>
+  </div>
+</div>
+<div class="overlay sleep" id="sleep" hidden>
+  <div class="sleep-card" role="dialog" aria-labelledby="sleepTitle">
+    <div class="sleep-moon" aria-hidden="true"></div>
+    <div class="sleep-train" aria-hidden="true"><div class="mini-train"><span></span><span></span><span></span></div><i>z</i><i>z</i><i>Z</i></div>
+    <h2 id="sleepTitle">The train is sleeping</h2>
+    <p>Great riding today! Come back tomorrow for more MRT rides.</p>
+    <button class="sleep-btn" id="sleepParent">🔒 Grown-ups</button>
+  </div>
+</div>
+
+<script>
+(() => {
+  // Every station open on each line (Nov 2026), in route order. The Circle Line runs from Dhoby Ghaut
+  // round the loop to Bayfront. Bedok South, Sungei Bedok and Xilin open on 26 Dec 2026: add them then.
+  const LINES = [
+    { id: "NS", name: "North South Line", color: "#D42E12",
+      stations: ["Jurong East", "Bukit Batok", "Bukit Gombak", "Choa Chu Kang", "Yew Tee", "Kranji", "Marsiling", "Woodlands", "Admiralty", "Sembawang", "Canberra", "Yishun", "Khatib", "Yio Chu Kang", "Ang Mo Kio", "Bishan", "Braddell", "Toa Payoh", "Novena", "Newton", "Orchard", "Somerset", "Dhoby Ghaut", "City Hall", "Raffles Place", "Marina Bay", "Marina South Pier"] },
+    { id: "EW", name: "East West Line", color: "#009645",
+      stations: ["Pasir Ris", "Tampines", "Simei", "Tanah Merah", "Bedok", "Kembangan", "Eunos", "Paya Lebar", "Aljunied", "Kallang", "Lavender", "Bugis", "City Hall", "Raffles Place", "Tanjong Pagar", "Outram Park", "Tiong Bahru", "Redhill", "Queenstown", "Commonwealth", "Buona Vista", "Dover", "Clementi", "Jurong East", "Chinese Garden", "Lakeside", "Boon Lay", "Pioneer", "Joo Koon", "Gul Circle", "Tuas Crescent", "Tuas West Road", "Tuas Link"] },
+    { id: "NE", name: "North East Line", color: "#9900AA",
+      stations: ["HarbourFront", "Outram Park", "Chinatown", "Clarke Quay", "Dhoby Ghaut", "Little India", "Farrer Park", "Boon Keng", "Potong Pasir", "Woodleigh", "Serangoon", "Kovan", "Hougang", "Buangkok", "Sengkang", "Punggol", "Punggol Coast"] },
+    { id: "CC", name: "Circle Line", color: "#E8930C",
+      stations: ["Dhoby Ghaut", "Bras Basah", "Esplanade", "Promenade", "Nicoll Highway", "Stadium", "Mountbatten", "Dakota", "Paya Lebar", "MacPherson", "Tai Seng", "Bartley", "Serangoon", "Lorong Chuan", "Bishan", "Marymount", "Caldecott", "Botanic Gardens", "Farrer Road", "Holland Village", "Buona Vista", "one-north", "Kent Ridge", "Haw Par Villa", "Pasir Panjang", "Labrador Park", "Telok Blangah", "HarbourFront", "Keppel", "Cantonment", "Prince Edward Road", "Marina Bay", "Bayfront"] },
+    { id: "DT", name: "Downtown Line", color: "#005EC4",
+      stations: ["Bukit Panjang", "Cashew", "Hillview", "Hume", "Beauty World", "King Albert Park", "Sixth Avenue", "Tan Kah Kee", "Botanic Gardens", "Stevens", "Newton", "Little India", "Rochor", "Bugis", "Promenade", "Bayfront", "Downtown", "Telok Ayer", "Chinatown", "Fort Canning", "Bencoolen", "Jalan Besar", "Bendemeer", "Geylang Bahru", "Mattar", "MacPherson", "Ubi", "Kaki Bukit", "Bedok North", "Bedok Reservoir", "Tampines West", "Tampines", "Tampines East", "Upper Changi", "Expo"] },
+    { id: "TE", name: "Thomson-East Coast Line", color: "#9D5B25",
+      stations: ["Woodlands North", "Woodlands", "Woodlands South", "Springleaf", "Lentor", "Mayflower", "Bright Hill", "Upper Thomson", "Caldecott", "Stevens", "Napier", "Orchard Boulevard", "Orchard", "Great World", "Havelock", "Outram Park", "Maxwell", "Shenton Way", "Marina Bay", "Gardens by the Bay", "Tanjong Rhu", "Katong Park", "Tanjong Katong", "Marine Parade", "Marine Terrace", "Siglap", "Bayshore"] },
+  ];
+  // Schematic map positions (x west→east 0–184, y north→south 0–100). Interchanges share one position.
+  const POS = {"Jurong East": [46, 58], "Bukit Batok": [48, 50], "Bukit Gombak": [49, 44], "Choa Chu Kang": [50, 37], "Yew Tee": [52, 30], "Kranji": [58, 22], "Marsiling": [66, 16], "Woodlands": [74, 14], "Admiralty": [82, 13], "Sembawang": [89, 12], "Canberra": [96, 13], "Yishun": [102, 18], "Khatib": [104, 24], "Yio Chu Kang": [105, 30], "Ang Mo Kio": [105, 36], "Bishan": [105, 42], "Braddell": [105, 47], "Toa Payoh": [105, 52], "Novena": [103, 57], "Newton": [100, 61], "Orchard": [96, 65], "Somerset": [99, 68], "Dhoby Ghaut": [102, 71], "City Hall": [106, 74], "Raffles Place": [106, 79], "Marina Bay": [108, 84], "Marina South Pier": [109, 90], "Pasir Ris": [178, 36], "Tampines": [172, 44], "Simei": [168, 50], "Tanah Merah": [164, 56], "Bedok": [158, 60], "Kembangan": [152, 62], "Eunos": [146, 63], "Paya Lebar": [140, 64], "Aljunied": [134, 65], "Kallang": [128, 66], "Lavender": [122, 68], "Bugis": [114, 70], "Tanjong Pagar": [102, 82], "Outram Park": [97, 80], "Tiong Bahru": [92, 78], "Redhill": [87, 76], "Queenstown": [82, 74], "Commonwealth": [77, 72], "Buona Vista": [72, 70], "Dover": [66, 68], "Clementi": [60, 66], "Chinese Garden": [41, 59], "Lakeside": [36, 60], "Boon Lay": [31, 62], "Pioneer": [26, 64], "Joo Koon": [21, 66], "Gul Circle": [16, 68], "Tuas Crescent": [12, 71], "Tuas West Road": [8, 74], "Tuas Link": [4, 77], "HarbourFront": [88, 90], "Chinatown": [100, 77], "Clarke Quay": [101, 74], "Little India": [105, 65], "Farrer Park": [108, 61], "Boon Keng": [113, 58], "Potong Pasir": [117, 54], "Woodleigh": [120, 50], "Serangoon": [124, 46], "Kovan": [129, 42], "Hougang": [133, 38], "Buangkok": [137, 33], "Sengkang": [141, 28], "Punggol": [145, 23], "Punggol Coast": [149, 18], "Bras Basah": [108, 71], "Esplanade": [112, 75], "Promenade": [116, 77], "Nicoll Highway": [121, 73], "Stadium": [126, 70], "Mountbatten": [131, 69], "Dakota": [135, 68], "MacPherson": [140, 58], "Tai Seng": [139, 53], "Bartley": [131, 48], "Lorong Chuan": [115, 44], "Marymount": [99, 44], "Caldecott": [93, 47], "Botanic Gardens": [86, 54], "Farrer Road": [81, 59], "Holland Village": [76, 63], "one-north": [70, 75], "Kent Ridge": [71, 80], "Haw Par Villa": [74, 85], "Pasir Panjang": [77, 89], "Labrador Park": [80, 92], "Telok Blangah": [84, 93], "Keppel": [92, 91], "Cantonment": [96, 89], "Prince Edward Road": [101, 91], "Bayfront": [113, 81], "Bukit Panjang": [57, 42], "Cashew": [61, 44], "Hillview": [64, 46], "Hume": [67, 48], "Beauty World": [70, 50], "King Albert Park": [73, 52], "Sixth Avenue": [77, 53], "Tan Kah Kee": [81, 53], "Stevens": [92, 56], "Rochor": [109, 66], "Downtown": [111, 86], "Telok Ayer": [105, 85], "Fort Canning": [97, 75], "Bencoolen": [104, 68], "Jalan Besar": [112, 64], "Bendemeer": [116, 62], "Geylang Bahru": [120, 60], "Mattar": [131, 59], "Ubi": [145, 55], "Kaki Bukit": [150, 53], "Bedok North": [155, 52], "Bedok Reservoir": [160, 50], "Tampines West": [165, 46], "Tampines East": [176, 48], "Upper Changi": [178, 54], "Expo": [180, 60], "Woodlands North": [76, 8], "Woodlands South": [77, 20], "Springleaf": [84, 26], "Lentor": [88, 31], "Mayflower": [92, 35], "Bright Hill": [95, 39], "Upper Thomson": [94, 43], "Napier": [90, 61], "Orchard Boulevard": [92, 64], "Great World": [93, 70], "Havelock": [92, 75], "Maxwell": [101, 85], "Shenton Way": [104, 88], "Gardens by the Bay": [113, 89], "Tanjong Rhu": [120, 86], "Katong Park": [126, 84], "Tanjong Katong": [132, 83], "Marine Parade": [138, 82], "Marine Terrace": [144, 81], "Siglap": [150, 80], "Bayshore": [156, 78]};
+  // STOPS[name] = every line (and index) that stops there, so interchanges are easy to find.
+  const STOPS = {};
+  LINES.forEach(L => L.stations.forEach((n, i) => (STOPS[n] ??= []).push({ L, i })));
+  const CHEERS = ["Great job!", "Well done!", "Super!", "You got it!", "Shiok!", "Awesome!", "Fantastic!"];
+
+  const $ = id => document.getElementById(id);
+  const rand = (a, b) => a + Math.floor(Math.random() * (b - a + 1));
+  const pick = arr => arr[Math.floor(Math.random() * arr.length)];
+  const shuffle = arr => { for (let i = arr.length - 1; i > 0; i--) { const j = rand(0, i); [arr[i], arr[j]] = [arr[j], arr[i]]; } return arr; };
+
+  // ---- saved progress (best-effort) ----
+  const store = {
+    get(k, d) { try { const v = localStorage.getItem(k); return v == null ? d : JSON.parse(v); } catch { return d; } },
+    set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} },
+  };
+  let badges = store.get("mrtBadges", {});
+  // Play time, set by a grown-up: minutes per day in mrtLimit (0 = no limit) and today's use in mrtPlay
+  // { day, used (seconds), extra (minutes added today) }. It's saved every few seconds, so reloading or
+  // reopening the game doesn't reset it, and a new day starts fresh. With storage blocked it lasts for this visit.
+  const dayKey = () => new Date().toDateString();
+  const playTime = {
+    lim: +store.get("mrtLimit", 20) || 0, // 20 minutes a day unless a grown-up changes it
+    mem: null,
+    limit() { return this.lim; },
+    setLimit(m) { this.lim = m; store.set("mrtLimit", m); },
+    rec() { const r = store.get("mrtPlay", null) || this.mem; return r && r.day === dayKey() ? r : { day: dayKey(), used: 0, extra: 0 }; },
+    save(r) { this.mem = r; store.set("mrtPlay", r); },
+    total() { return this.lim ? (this.lim + this.rec().extra) * 60 : Infinity; }, // seconds allowed today
+    left() { return this.total() - this.rec().used; },
+    add(sec) { const r = this.rec(); r.used += sec; this.save(r); },
+  };
+  let soundOn = store.get("mrtSound", true);
+
+  // ---- state ----
+  const S = {
+    gen: 0, line: LINES[0], mode: "add", startIdx: 0, startDir: 1,
+    at: 0, dir: 1, from: 0, left: 10, asked: 0, stars: 0, surprises: 0, trail: new Set(), home: null,
+    q: null, tries: 0, busy: false, counted: 0, last: "", surpriseNow: false,
+  };
+
+  // ---- audio ----
+  let ac;
+  function audio() {
+    ac = ac || new (window.AudioContext || window.webkitAudioContext)();
+    if (ac.state !== "running") ac.resume().catch(() => {}); // "suspended", or "interrupted" on iPhone/iPad
+    return ac;
+  }
+  function tone(freq, start, dur, type = "sine", vol = 0.18) {
+    if (!soundOn) return;
+    try {
+      audio();
+      const o = ac.createOscillator(), g = ac.createGain();
+      o.type = type; o.frequency.value = freq;
+      const t = ac.currentTime + start;
+      g.gain.setValueAtTime(0.0001, t);
+      g.gain.exponentialRampToValueAtTime(vol, t + 0.02);
+      g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+      o.connect(g).connect(ac.destination); o.start(t); o.stop(t + dur + 0.05);
+    } catch {}
+  }
+  const sfx = {
+    chime() { tone(784, 0, .5); tone(659, .35, .5); tone(523, .7, .7); },
+    right() { [523, 659, 784, 1047].forEach((f, i) => tone(f, i * .09, .25, "triangle")); },
+    wrong() { tone(220, 0, .3, "sine", .12); },
+    tick() { tone(880, 0, .08, "square", .05); },
+    toot() { tone(392, 0, .28, "triangle", .2); tone(494, 0, .28, "triangle", .14); tone(392, .36, .5, "triangle", .2); tone(494, .36, .5, "triangle", .14); },
+    ready() { if (ac && ac.state === "running") { tone(880, 0, .18, "sine", .12); tone(1319, .12, .3, "sine", .12); } },
+    doorsClosing() { [0, .22, .44, .66].forEach(t => tone(1175, t, .12, "square", .05)); },
+  };
+  // Low train rumble whose loudness follows the train's speed (0..1).
+  function rumble() {
+    if (!soundOn) return { set() {}, stop() {} };
+    try {
+      audio();
+      const len = ac.sampleRate * 2, buf = ac.createBuffer(1, len, ac.sampleRate), d = buf.getChannelData(0);
+      for (let i = 0; i < len; i++) d[i] = Math.random() * 2 - 1;
+      const src = ac.createBufferSource(), f = ac.createBiquadFilter(), g = ac.createGain();
+      src.buffer = buf; src.loop = true; f.type = "lowpass"; f.frequency.value = 220; g.gain.value = 0;
+      src.connect(f).connect(g).connect(ac.destination); src.start();
+      return {
+        set(v) { g.gain.setTargetAtTime(v * 0.22, ac.currentTime, 0.05); f.frequency.setTargetAtTime(160 + v * 260, ac.currentTime, 0.05); },
+        stop() { g.gain.setTargetAtTime(0, ac.currentTime, 0.1); src.stop(ac.currentTime + 0.5); },
+      };
+    } catch { return { set() {}, stop() {} }; }
+  }
+  // Background music: an original, gentle "train ride" tune made from code (not a recording).
+  // 100 beats per minute, chords C – Am – F – G, looping every 8 bars.
+  const music = (() => {
+    const BEAT = 0.6, MUSIC_VOL = 0.14;
+    const MELODY = [64,67,64,60, 69,67,64,0, 65,69,72,69, 67,0,62,64,
+                    64,67,72,67, 69,72,69,64, 65,64,62,65, 64,62,60,0];
+    const BASS = [48, 45, 41, 43, 48, 45, 41, 43];
+    const hz = m => 440 * Math.pow(2, (m - 69) / 12);
+    let bus, timer, next = 0, step = 0;
+    function note(m, t, dur, type, vol) {
+      const o = ac.createOscillator(), g = ac.createGain();
+      o.type = type; o.frequency.value = hz(m);
+      g.gain.setValueAtTime(0.0001, t);
+      g.gain.exponentialRampToValueAtTime(vol, t + 0.03);
+      g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+      o.connect(g).connect(bus); o.start(t); o.stop(t + dur + 0.05);
+    }
+    function schedule() {
+      if (next < ac.currentTime - 0.2) next = ac.currentTime + 0.05; // sound was paused: pick up from now
+      while (next < ac.currentTime + 0.5) {
+        const m = MELODY[step], bar = Math.floor(step / 4), beat = step % 4;
+        if (m) note(m, next, BEAT * 0.9, "triangle", 0.5);
+        if (beat === 0 || beat === 2) note(BASS[bar] + (beat === 2 ? 24 : 12), next, BEAT * 1.6, "triangle", 0.45); // high enough for phone speakers
+        if (beat === 1 || beat === 3) note(BASS[bar] + 28, next, 0.12, "sine", 0.15); // soft "tick" like train wheels
+        next += BEAT; step = (step + 1) % MELODY.length;
+      }
+    }
+    return {
+      start() {
+        if (!soundOn || timer) return;
+        try {
+          audio();
+          if (!bus) { bus = ac.createGain(); bus.connect(ac.destination); }
+          bus.gain.cancelScheduledValues(ac.currentTime);
+          bus.gain.setValueAtTime(0.0001, ac.currentTime);
+          bus.gain.exponentialRampToValueAtTime(MUSIC_VOL, ac.currentTime + 1);
+          next = ac.currentTime + 0.1;
+          timer = setInterval(schedule, 120); schedule();
+        } catch {}
+      },
+      stop() {
+        if (!timer) return;
+        clearInterval(timer); timer = null;
+        try { bus.gain.cancelScheduledValues(ac.currentTime); bus.gain.setTargetAtTime(0.0001, ac.currentTime, 0.15); } catch {}
+      },
+      // quieter while the voice is talking so the question is easy to hear
+      duck(on) {
+        if (!timer || !bus) return;
+        try { bus.gain.cancelScheduledValues(ac.currentTime); bus.gain.setTargetAtTime(on ? MUSIC_VOL / 3 : MUSIC_VOL, ac.currentTime, 0.1); } catch {}
+      },
+    };
+  })();
+
+  function say(text) {
+    const pause = Math.max(1200, text.length * 55);
+    if (!soundOn || !("speechSynthesis" in window)) return sleep(pause);
+    return new Promise(resolve => {
+      const end = () => { clearTimeout(guard); music.duck(false); resolve(); };
+      const guard = setTimeout(end, pause + 2500); // some browsers never fire onend
+      try {
+        if (speechSynthesis.speaking || speechSynthesis.pending) speechSynthesis.cancel();
+        const u = window.__mrtUtterance = new SpeechSynthesisUtterance(text);
+        u.rate = 0.9; u.pitch = 1.1;
+        const v = speechSynthesis.getVoices().find(v => /en[-_](SG|GB|AU)/i.test(v.lang)) || speechSynthesis.getVoices().find(v => /^en/i.test(v.lang));
+        if (v) u.voice = v;
+        u.onstart = () => music.duck(true);
+        u.onend = u.onerror = end;
+        speechSynthesis.speak(u);
+      } catch { end(); }
+    });
+  }
+  const sleep = ms => new Promise(r => setTimeout(r, ms));
+
+  // ---- unlocking sound on phones and tablets ----
+  let silentEl = null, speechUnlocked = false;
+  // A tiny silent WAV played through an <audio> element puts iPhones/iPads into "playback" mode,
+  // so the ring/silent switch doesn't mute the game's Web Audio sounds.
+  function silentWavUrl() {
+    const n = 800, buf = new ArrayBuffer(44 + n), v = new DataView(buf);
+    const w = (o, str) => [...str].forEach((c, i) => v.setUint8(o + i, c.charCodeAt(0)));
+    w(0, "RIFF"); v.setUint32(4, 36 + n, true); w(8, "WAVEfmt "); v.setUint32(16, 16, true);
+    v.setUint16(20, 1, true); v.setUint16(22, 1, true); v.setUint32(24, 8000, true); v.setUint32(28, 8000, true);
+    v.setUint16(32, 1, true); v.setUint16(34, 8, true); w(36, "data"); v.setUint32(40, n, true);
+    for (let i = 0; i < n; i++) v.setUint8(44 + i, 128);
+    return URL.createObjectURL(new Blob([buf], { type: "audio/wav" }));
+  }
+  function unlockAudio() {
+    if (ac?.state === "running" && silentEl && !silentEl.paused && speechUnlocked) { music.start(); return; } // all fine already
+    try { if (navigator.audioSession) navigator.audioSession.type = "playback"; } catch {}
+    try {
+      const c = audio();
+      const src = c.createBufferSource();
+      src.buffer = c.createBuffer(1, 1, 22050);
+      src.connect(c.destination); src.start(0);
+    } catch {}
+    try {
+      if (!silentEl) { silentEl = new Audio(silentWavUrl()); silentEl.loop = true; silentEl.setAttribute("playsinline", ""); }
+      silentEl.play().catch(() => {});
+    } catch {}
+    // iPhones/iPads only let a page talk after it has spoken once during a tap.
+    try {
+      if (!speechUnlocked && "speechSynthesis" in window) {
+        const u = new SpeechSynthesisUtterance(" ");
+        u.volume = 0;
+        speechSynthesis.speak(u);
+        speechUnlocked = true;
+      }
+    } catch {}
+    music.start();
+    // Listeners stay on: iPhones and iPads pause sound again after the screen locks, a call or an app switch,
+    // and the next tap brings it back.
+  }
+
+  // ---- scenery art: simple SVG tiles that repeat sideways ----
+  const svgUrl = svg => `url("data:image/svg+xml,${encodeURIComponent(svg)}")`;
+  (function paintScenery() {
+    // far: pale blocks in the distance
+    let city = "";
+    [[0, 30, 66], [40, 26, 50], [78, 34, 78], [124, 28, 58], [166, 32, 72], [212, 26, 46], [250, 30, 62]].forEach(([x, w, h]) => { city += `<rect x="${x}" y="${84 - h}" width="${w}" height="${h}" rx="4" fill="#c3d9ee"/>`; });
+    $("layerFar").style.backgroundImage = svgUrl(`<svg xmlns="http://www.w3.org/2000/svg" width="290" height="84">${city}</svg>`);
+    // near: pastel HDB flats (a coloured roof band, rows of little windows) with round trees between them
+    let town = "";
+    const walls = ["#fde3d0", "#dcedf8", "#fbeab9", "#e5def6", "#d6f0e1"], roofs = ["#f08a6e", "#6fb0de", "#e9b730", "#a48be0", "#63b98d"];
+    [58, 42, 72, 50, 66, 40, 76, 54].forEach((h, i) => {
+      const x = 4 + i * 46, w = 37, y = 84 - h;
+      town += `<rect x="${x}" y="${y}" width="${w}" height="${h + 4}" rx="4" fill="${walls[i % 5]}"/><rect x="${x - 1.5}" y="${y - 3}" width="${w + 3}" height="6" rx="3" fill="${roofs[i % 5]}"/>`;
+      for (let yy = y + 9; yy < 78; yy += 10) for (let xx = x + 5; xx < x + w - 6; xx += 9) town += `<rect x="${xx}" y="${yy}" width="5.5" height="5.5" rx="1.5" fill="#fff" opacity=".75"/>`;
+    });
+    [[46, 11], [138, 13], [230, 11], [322, 12]].forEach(([x, r]) => {
+      town += `<rect x="${x - 2}" y="62" width="4" height="22" fill="#8a6a48"/><circle cx="${x}" cy="${60 - r * .2}" r="${r}" fill="#8fd3a0"/><circle cx="${x - 3.5}" cy="${57 - r * .2}" r="${r * .48}" fill="#fff" opacity=".28"/>`;
+    });
+    $("layerNear").style.backgroundImage = svgUrl(`<svg xmlns="http://www.w3.org/2000/svg" width="368" height="84">${town}</svg>`);
+    // the cars behind ours (they show when the train drives off): windows and doors on the long body
+    let cars = "";
+    [8, 352].forEach(x => {
+      cars += `<rect x="${x + 4}" y="4" width="5" height="96" fill="#9aa6b2" opacity=".7"/>`;
+      [x + 22, x + 266].forEach(d => { cars += `<rect x="${d}" y="7" width="30" height="93" rx="5" fill="#eef2f5" stroke="#bcc7d2" stroke-width="1.5"/><path d="M ${d + 15},8 V 100" stroke="#bcc7d2" stroke-width="1.2"/><rect x="${d + 3.5}" y="15" width="9" height="34" rx="4" fill="#bcdaec"/><rect x="${d + 17.5}" y="15" width="9" height="34" rx="4" fill="#bcdaec"/>`; });
+      cars += `<rect x="${x + 62}" y="12" width="194" height="60" rx="12" fill="#dbeffb" stroke="#3a4758" stroke-width="3.5"/><path d="M ${x + 78},14 h 18 l -18,56 h -18 z" fill="#fff" opacity=".45"/>`;
+    });
+    document.documentElement.style.setProperty("--cars", svgUrl(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 696 100" preserveAspectRatio="none">${cars}</svg>`));
+    // the platform's tiles: joints that fan out towards us
+    let tiles = "";
+    for (let k = -7; k <= 7; k++) tiles += `<path d="M ${200 + k * 44 + 22},0 L ${200 + (k * 44 + 22) * 1.55},100"/>`;
+    document.documentElement.style.setProperty("--tiles", svgUrl(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 100" preserveAspectRatio="none"><g stroke="#d2dbe5" stroke-width="1.6" fill="none" vector-effect="non-scaling-stroke">${tiles}<path d="M 0,34 H 400 M 0,76 H 400"/></g></svg>`));
+  })();
+  const reduceMotion = matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+  // ---- start screen scenery: clouds, HDB flats and trees (SVG tiles set as CSS variables) ----
+  (function paintStation() {
+    const root = document.documentElement.style;
+    const cloud = (x, y, k) => `<g transform="translate(${x} ${y}) scale(${k})" fill="#fff"><ellipse cx="0" cy="12" rx="44" ry="15"/><ellipse cx="-18" cy="4" rx="22" ry="16"/><ellipse cx="14" cy="-2" rx="26" ry="20"/></g>`;
+    root.setProperty("--clouds", svgUrl(`<svg xmlns="http://www.w3.org/2000/svg" width="420" height="120"><g opacity=".92">${cloud(70, 40, 1)}${cloud(250, 78, .7)}${cloud(370, 30, .55)}</g></svg>`));
+    let hdb = "";
+    const roofs = ["#e07a5f", "#5fa8d3", "#f2c94c", "#81b29a", "#e07a5f", "#b388eb"];
+    [[0, 76, 190], [84, 64, 150], [156, 84, 215], [248, 60, 165], [316, 80, 200], [404, 68, 140]].forEach(([x, w, h], i) => {
+      const top = 230 - h;
+      hdb += `<rect x="${x}" y="${top}" width="${w}" height="${h}" fill="#f6f1e8" stroke="#d9d0c1"/>`;
+      hdb += `<rect x="${x - 2}" y="${top - 6}" width="${w + 4}" height="10" rx="2" fill="${roofs[i]}"/>`;
+      for (let y = top + 14; y < 206; y += 13) hdb += `<rect x="${x + 6}" y="${y}" width="${w - 12}" height="5" rx="1" fill="#c6d8e6"/>`;
+      hdb += `<rect x="${x}" y="208" width="${w}" height="22" fill="#d8cfc0"/>`; // void deck
+      for (let px = x + 8; px < x + w - 6; px += 16) hdb += `<rect x="${px}" y="208" width="4" height="22" fill="#bfb4a3"/>`;
+    });
+    [16, 74, 130, 196, 262, 318, 384, 446].forEach((x, i) => {
+      const r = 15 + (i % 3) * 3;
+      hdb += `<rect x="${x - 2}" y="${222 - r}" width="4" height="${r + 8}" fill="#7a5a3a"/><circle cx="${x}" cy="${222 - r}" r="${r}" fill="#4caf50"/><circle cx="${x + r * .55}" cy="${226 - r}" r="${r * .7}" fill="#43a047"/>`;
+    });
+    root.setProperty("--hdb", svgUrl(`<svg xmlns="http://www.w3.org/2000/svg" width="480" height="230">${hdb}</svg>`));
+  })();
+  document.body.dataset.screen = "home";
+
+  // ---- home screen ----
+  function renderLines() {
+    $("lineList").innerHTML = "";
+    LINES.forEach(L => {
+      const b = document.createElement("button");
+      b.className = "line-btn" + (L === S.line ? " sel" : "");
+      b.style.setProperty("--c", L.color);
+      b.innerHTML = `<span class="code">${L.id}</span><span class="name">${L.name}</span>${badges[L.id] ? `<span class="badge" title="Completed">🏅</span>` : ""}`;
+      b.onclick = () => {
+        if (L === S.line) return;
+        S.line = L; S.startIdx = 0; S.startDir = 1; updateStartChip(); renderLines(); sfx.tick();
+        swapStartTrain(); // old train drives off, a train in this line's colour pulls in
+      };
+      $("lineList").appendChild(b);
+    });
+  }
+  function bindPills(listId, key, attr) {
+    $(listId).querySelectorAll(".pill").forEach(p => p.onclick = () => {
+      $(listId).querySelectorAll(".pill").forEach(x => x.classList.remove("sel"));
+      p.classList.add("sel"); S[key] = p.dataset[attr]; sfx.tick();
+    });
+  }
+  bindPills("modeList", "mode", "mode");
+
+  function show(id) {
+    document.body.dataset.screen = id;
+    document.querySelectorAll(".screen").forEach(s => s.classList.toggle("active", s.id === id));
+    window.scrollTo(0, 0);
+  }
+
+  // ---- questions ----
+  function makeQuestion() {
+    const op = S.mode === "mix" ? pick(["+", "-"]) : (S.mode === "add" ? "+" : "-");
+    // Easy level only: every number in the question and answer is 10 or less.
+    let a, b, key, guard = 0;
+    do {
+      if (op === "+") { a = rand(1, 9); b = rand(1, 10 - a); }
+      else { a = rand(2, 10); b = rand(1, Math.min(9, a)); }
+      key = a + op + b;
+    } while (key === S.last && guard++ < 20);
+    S.last = key;
+    const ans = op === "+" ? a + b : a - b;
+    const opts = new Set([ans]);
+    const near = shuffle([-2, -1, 1, 2, 3, -3]);
+    for (const d of near) { if (opts.size >= 3) break; const v = ans + d; if (v >= 0 && v <= 10) opts.add(v); }
+    return { a, b, op, ans, opts: shuffle([...opts]) };
+  }
+
+  // ---- game ----
+  // The station sign: label ("Start", "Now at", "Next stop"), station name, a badge for every line that
+  // stops there (the current line first), and an arrow pointing the way the train goes for "Next stop".
+  function setSign(label, name) {
+    $("signLbl").textContent = label;
+    $("stationName").textContent = name;
+    const lines = (STOPS[name] || []).map(z => z.L).sort((a, b) => (b === S.line) - (a === S.line));
+    $("signLines").innerHTML = lines.map(L => `<span class="lc" style="background:${L.color}">${L.id}</span>`).join("");
+    const arrow = $("signArrow");
+    arrow.hidden = label !== "Next stop";
+    arrow.textContent = S.dir > 0 ? "→" : "←";
+  }
+
+  function startGame() {
+    const gen = ++S.gen; // bumping this cancels timers/rides from an earlier game
+    S.home = { line: S.line, startIdx: S.startIdx, startDir: S.startDir };
+    const st = S.line.stations;
+    S.at = S.from = S.startIdx;
+    S.dir = S.startDir;
+    if (!st[S.at + S.dir]) S.dir = -S.dir; // at the end of the line: go the other way
+    S.left = Infinity; // every ride goes to the end of the line (or on, after changing at an interchange)
+    S.asked = 0; S.stars = 0; S.surprises = 0; S.last = "";
+    S.trail = new Set([st[S.at]]);
+    S.time = playTime.limit() ? skyTime() : clockTime(); S.weather = rollWeather();
+    S.lastStops = null; $("stopsPill").hidden = true; S.weatherLeft = rand(...WEATHER_EVERY); S.envStops = 0;
+    document.documentElement.style.setProperty("--line", S.line.color);
+    applyEnv(isUnderground(S.line, st[S.at]) ? "ug" : "open");
+    $("starCount").textContent = "⭐ 0";
+    setSign("Start", st[S.at]);
+    emptySeats();
+    $("platform").innerHTML = `<span class="note">Starting at ${st[S.at]} 🚆</span>`;
+    $("train").classList.add("open");
+    $("tally").classList.remove("show");
+    show("game");
+    renderRoute(S.at); // after show(): the strip sizes its window to the space it has
+    setTimeout(() => gen === S.gen && depart(), 1200);
+  }
+
+  // Put the player's own choices back (a ride may have changed lines at an interchange).
+  function restoreHome() {
+    if (!S.home) return;
+    S.line = S.home.line; S.startIdx = S.home.startIdx; S.startDir = S.home.startDir;
+    document.documentElement.style.setProperty("--line", S.line.color);
+    updateStartChip();
+  }
+
+  // Route strip window: which stations get a dot (a…z) and where station i sits, in % of the strip.
+  // More stations ahead than behind (the train shows 1 behind and the rest ahead), clamped at the line's ends.
+  const ROUTE_EDGE = 24; // px kept free at each side of the strip for the "⋯", so it never covers a dot
+  function routeWindow() {
+    const n = S.line.stations.length - 1, box = $("route").querySelector(".rail-box");
+    const width = (box && box.clientWidth) || 220;
+    const count = Math.max(4, Math.min(8, Math.floor((width - 2 * ROUTE_EDGE) / 28) + 1)); // stations shown
+    const span = Math.min(n, count - 1), behind = 1;
+    let a = S.dir > 0 ? S.at - behind : S.at - (span - behind);
+    a = Math.max(0, Math.min(a, n - span));
+    const pad = 100 * ROUTE_EDGE / width;
+    return { a, z: a + span, pad, step: span ? (100 - 2 * pad) / span : 0 };
+  }
+  const routeX = (w, i) => Math.max(0, Math.min(100, w.pad + (i - w.a) * w.step));
+
+  // pos can be fractional while the train is between stations
+  function renderRoute(pos) {
+    const st = S.line.stations, n = st.length - 1, route = $("route");
+    // the strip's frame first, so the window can be sized to the space between the end names
+    route.innerHTML = `<span class="end">${st[0]}</span><div class="rail-box"></div><span class="end">${st[n]}</span>`;
+    const w = S.routeWin = routeWindow();
+    const lo = Math.min(S.from, pos), hi = Math.max(S.from, pos);
+    let html = `<div class="track" style="left:${w.a > 0 ? 0 : w.pad}%;right:${w.z < n ? 0 : w.pad}%"></div>`;
+    html += `<div class="done" id="routeDone"></div>`;
+    for (let i = w.a; i <= w.z; i++) html += `<div class="dot ${i >= lo && i <= hi ? "passed" : ""}" style="left:${routeX(w, i)}%"></div>`;
+    if (w.a > 0) html += `<div class="more l">⋯</div>`;
+    if (w.z < n) html += `<div class="more r">⋯</div>`;
+    html += `<div class="marker" id="routeMarker"></div>`;
+    route.querySelector(".rail-box").innerHTML = html;
+    $("routeMarker").textContent = "🚆";
+    placeRoute(pos);
+  }
+  // Move the 🚆 and the travelled stretch (used on render and every frame of a ride).
+  function placeRoute(pos) {
+    const w = S.routeWin, lo = Math.min(S.from, pos), hi = Math.max(S.from, pos);
+    const l = lo < w.a ? 0 : routeX(w, lo), r = hi > w.z ? 100 : routeX(w, hi);
+    $("routeDone").style.cssText = `left:${l}%;width:${Math.max(0, r - l)}%`;
+    $("routeMarker").style.left = routeX(w, pos) + "%";
+  }
+
+  // ---- the passengers: a cast of drawn people (storybook style: round heads, dot eyes, rosy cheeks) ----
+  const SKIN = ["#f8d6b8", "#ecbd94", "#d59c6c", "#b0764a", "#8a5533"];
+  // each: skin tone, hair style, hair (or headscarf) colour, top, trousers, extras ("g" glasses, "k" a kid)
+  const CAST = [
+    [1, "short", "#2b2320", "#4f8fe0", "#39465e"], [0, "bob", "#4a3223", "#f27d8a", "#5b6b8a"], [3, "curly", "#1e1714", "#f2c94c", "#39465e"],
+    [2, "hijab", "#7a5cc2", "#9a82d8", "#4b3f78"], [0, "granny", "#cfd2d8", "#59b38a", "#6b5a4a", "g"], [1, "pigtails", "#2b2320", "#ff9f43", "#3f7fd0", "k"],
+    [4, "short", "#17120f", "#e2574c", "#39465e"], [1, "grandpa", "#d8dbe0", "#6c8ea6", "#4a4f5a", "g"], [2, "bun", "#2b2320", "#3aa76d", "#39465e"],
+    [0, "cap", "#5a3d2b", "#4a6fd6", "#7a5a3a", "k"], [3, "bob", "#231a15", "#2bb3a3", "#4a4f5a"], [0, "short", "#b5651d", "#8e6fd1", "#39465e", "g"],
+    [4, "bun", "#17120f", "#ff8fab", "#5b6b8a"], [2, "short", "#2b2320", "#f2994a", "#39465e", "k"], [1, "hijab", "#2f9e8f", "#56c2b3", "#3b6e68"], [3, "pigtails", "#1e1714", "#e76f51", "#7a5a3a", "k"],
+  ];
+  function headSVG(c) { // drawn around (0, 0), 10 units in radius
+    const sk = SKIN[c[0]], h = c[1], hc = c[2];
+    const top = `<path d="M -10.4,-1 C -11.2,-9 -6,-12.6 0,-12.6 C 6,-12.6 11.2,-9 10.4,-1 C 8,-5.6 3,-7.2 -2,-6.5 C -5.5,-6 -8.4,-4.4 -10.4,-1 Z" fill="${hc}"/>`;
+    let back = "", front = top, face = `<circle r="10" fill="${sk}"/>`, my = 4.8;
+    if (h === "bob") back = `<rect x="-12.2" y="-12" width="24.4" height="25" rx="10.5" fill="${hc}"/>`;
+    if (h === "pigtails") back = `<circle cx="-12.6" cy="3" r="4.6" fill="${hc}"/><circle cx="12.6" cy="3" r="4.6" fill="${hc}"/>`;
+    if (h === "bun" || h === "granny") back = `<circle cx="0" cy="-13.4" r="5.2" fill="${hc}"/>`;
+    if (h === "curly") { back = `<circle cx="0" cy="-2.5" r="13.6" fill="${hc}"/>`; front = `<circle cx="-6" cy="-8" r="4.6" fill="${hc}"/><circle cx="0" cy="-9.8" r="5" fill="${hc}"/><circle cx="6" cy="-8" r="4.6" fill="${hc}"/>`; }
+    if (h === "grandpa") { front = `<circle cx="-9.4" cy="-2.5" r="3.2" fill="${hc}"/><circle cx="9.4" cy="-2.5" r="3.2" fill="${hc}"/><path d="M -3.8,4 Q 0,2 3.8,4 Q 0,6 -3.8,4 Z" fill="${hc}"/>`; my = 6.2; }
+    if (h === "hijab") { back = `<path d="M -12.6,-2 C -12.6,-14 12.6,-14 12.6,-2 C 13.4,9 9,16 0,16.5 C -9,16 -13.4,9 -12.6,-2 Z" fill="${hc}"/>`; face = `<ellipse cx="0" cy="0.8" rx="7.6" ry="8.3" fill="${sk}"/>`; front = ""; }
+    if (h === "cap") front = top + `<path d="M -10.7,-3.2 C -10.7,-14 10.7,-14 10.7,-3.2 Z" fill="#e2574c"/><path d="M 3,-4.6 Q 14.5,-5 15.6,-1.4 Q 9,-3 3,-2.6 Z" fill="#e2574c"/>`;
+    const eyes = `<circle cx="-3.6" cy="0.8" r="1.35" fill="#2a2a33"/><circle cx="3.6" cy="0.8" r="1.35" fill="#2a2a33"/>`;
+    const mouth = `<path d="M -3,${my} Q 0,${my + 2.9} 3,${my}" stroke="#8a3b2e" stroke-width="1.3" stroke-linecap="round" fill="none"/>`;
+    const cheeks = `<circle cx="-6.4" cy="3.9" r="1.9" fill="#ff8a8a" opacity=".5"/><circle cx="6.4" cy="3.9" r="1.9" fill="#ff8a8a" opacity=".5"/>`;
+    const glasses = c[5] === "g" ? `<g fill="rgba(255,255,255,.3)" stroke="#3b3b45" stroke-width=".9"><circle cx="-3.7" cy="0.8" r="3.2"/><circle cx="3.7" cy="0.8" r="3.2"/><path d="M -.5,.8 H .5"/></g>` : "";
+    return back + face + front + eyes + mouth + cheeks + glasses;
+  }
+  // head and shoulders, for a seat
+  function bustSVG(i) {
+    const c = CAST[i];
+    return `<svg class="bust" viewBox="-17 -17 34 34" aria-hidden="true"><path d="M -13,17 Q -13,6 -5,5 L 5,5 Q 13,6 13,17 Z" fill="${c[3]}"/><rect x="-3" y="1" width="6" height="6" fill="${SKIN[c[0]]}"/><g transform="translate(0 -4)">${headSVG(c)}</g></svg>`;
+  }
+  // a whole person, feet at the bottom of the picture (kids are smaller)
+  function bodySVG(i) {
+    const c = CAST[i], sk = SKIN[c[0]];
+    const arm = (sx, d) => `<path d="${d}" stroke="${c[3]}" stroke-width="5.4" stroke-linecap="round" fill="none"/><circle cx="${sx * 12.6}" cy="-21" r="2.8" fill="${sk}"/>`;
+    return `<svg class="body" viewBox="-18 -67 36 70" aria-hidden="true"><g transform="scale(${c[5] === "k" ? .82 : 1})">`
+      + `<ellipse cx="-4.8" cy="-1.2" rx="4.8" ry="2.5" fill="#2b3340"/><ellipse cx="4.8" cy="-1.2" rx="4.8" ry="2.5" fill="#2b3340"/>`
+      + `<rect x="-7.2" y="-19" width="6.2" height="18" rx="3" fill="${c[4]}"/><rect x="1" y="-19" width="6.2" height="18" rx="3" fill="${c[4]}"/>`
+      + arm(-1, "M -9,-36 Q -14,-30 -12.6,-22") + arm(1, "M 9,-36 Q 14,-30 12.6,-22")
+      + `<path d="M -10,-17 Q -11.5,-37 -6,-40 L 6,-40 Q 11.5,-37 10,-17 Z" fill="${c[3]}"/><rect x="-3" y="-44" width="6" height="6" fill="${sk}"/>`
+      + `<g transform="translate(0 -51)">${headSVG(c)}</g></g></svg>`;
+  }
+  // A passenger button. People are dealt from a shuffled pack, so the same person isn't on the train twice.
+  let pack = [];
+  function personEl(cls) {
+    const s = document.createElement("button");
+    if (!pack.length) pack = shuffle([...CAST.keys()]);
+    const i = pack.pop();
+    s.className = "pax" + (cls ? " " + cls : "");
+    s.dataset.face = i;
+    s.innerHTML = bustSVG(i) + bodySVG(i);
+    s.onclick = () => countTap(s);
+    return s;
+  }
+
+  function countTap(el) {
+    if (el.querySelector(".n")) return;
+    S.counted++;
+    const n = document.createElement("span");
+    n.className = "n"; n.textContent = S.counted;
+    el.appendChild(n);
+    sfx.tick();
+    say(String(S.counted));
+  }
+
+  // Leave the station: doors close, then ride to the next station.
+  function depart() {
+    const gen = S.gen;
+    S.busy = true;
+    S.q = makeQuestion();
+    const next = S.line.stations[S.at + S.dir];
+    S.surpriseNow = S.asked >= 1 && Math.random() < 0.3; // a surprise on about 1 in 3 rides
+    $("tally").classList.remove("show", "done");
+    const warn = S.warnNow ? "Two more stops, then the train goes to sleep! " : "";
+    S.warnNow = false;
+    $("story").innerHTML = (warn ? `🌙 <b>2 more stops</b>, then the train goes to sleep!<br>` : "") + `Doors closing… Next station: <b>${next}</b>`;
+    $("equation").innerHTML = ""; $("answers").innerHTML = "";
+    $("feedback").textContent = ""; $("feedback").className = "feedback";
+    $("train").classList.remove("open");
+    sfx.doorsClosing();
+    say(`${warn}Doors closing. Next station, ${next}.`);
+    setTimeout(() => {
+      if (gen !== S.gen) return;
+      setSign("Next stop", next);
+      stepEnv();
+      const place = isUnderground(S.line, next) ? "ug" : "open";
+      ride(() => { fillScene(S.q); applyEnv(place); }, arrive);
+    }, reduceMotion ? 200 : 900);
+  }
+
+  // Between stations. The train speeds out of the 3D station to the right, then we ride in the driver's cab
+  // (tunnel or open track, by the two stations), then the train pulls in from the left and stops.
+  // The cab view covers the middle, which is where the next passengers and the next place are swapped in.
+  function ride(onMid, onDone) {
+    const scene = $("scene"), cab = $("cab"), car = $("carbox"), train = $("train");
+    const T = reduceMotion ? 900 : 4400;
+    const from = S.at, dir = S.dir, next = S.line.stations[from + dir];
+    const view = cabView(cab, scene.dataset.place === "ug", isUnderground(S.line, next), next);
+    const OUT = .17, IN = .83, FADE = .05; // leave 0–OUT, cab view, arrive IN–1
+    const SLIDE = reduceMotion ? 0 : scene.clientWidth * 1.4;
+    const speed = p => p < OUT ? p / OUT : p > IN ? (1 - p) / (1 - IN) : 1; // 0..1
+    const ease = p => p < .5 ? 4 * p * p * p : 1 - Math.pow(-2 * p + 2, 3) / 2;
+    const sound = rumble(), gen = S.gen;
+    let start = null, last = 0, dist = 0, swapped = false;
+    const end = () => { sound.stop(); car.style.transform = train.style.transform = ""; cab.style.opacity = 0; };
+    function frame(ts) {
+      if (gen !== S.gen) return end();
+      if (start === null) start = last = ts;
+      const p = Math.min(1, (ts - start) / T), v = speed(p);
+      dist += v * (ts - last) / 1000; last = ts;
+      car.style.transform = `translateX(${p < OUT ? SLIDE * (p / OUT) ** 2 : p > IN ? -SLIDE * ((1 - p) / (1 - IN)) ** 2 : SLIDE}px)`;
+      train.style.transform = reduceMotion ? "" : `translateY(${Math.sin(dist * 14) * 1.2 * v}px)`;
+      const show = Math.max(0, Math.min(1, (p - OUT + FADE) / FADE, (IN + FADE - p) / FADE));
+      cab.style.opacity = show;
+      if (show > 0) view.draw((p - OUT) / (IN - OUT), dist * 9, v);
+      if (!swapped && p >= .5) { swapped = true; onMid(); }
+      placeRoute(from + dir * ease(p));
+      sound.set(v);
+      if (p < 1) requestAnimationFrame(frame);
+      else { if (!swapped) onMid(); end(); onDone(); }
+    }
+    requestAnimationFrame(frame);
+  }
+
+  // The driver's view, drawn on a canvas: rails running to the horizon, sleepers, tunnel rings and lights
+  // underground, or sky, trees, poles and HDB flats outside (with the scene's time and weather), a tunnel
+  // mouth where the line goes in or comes out, the next station's platform near the end, and the cab's
+  // window frame and dashboard. q is 0..1 through the ride, z how far the train has gone, v its speed.
+  function cabView(cv, fromUG, toUG, next) {
+    const scene = $("scene"), W = scene.clientWidth, H = scene.clientHeight, dpr = Math.min(3, devicePixelRatio || 1);
+    cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr);
+    const g = cv.getContext("2d");
+    const DASH = 56, VH = H - DASH, vx = W / 2, hz0 = VH * .42, F = W * .55, CAM = 2.4, LEN = 70, NEAR = .5, ELEV = 9;
+    let hz = hz0; // the horizon bobs a little with the ride
+    const P = (X, Y, z) => [vx + X * F / z, hz + (CAM - Y) * F / z];
+    const lineCol = S.line.color, NAVY = "#3a4758";
+    const poly = (pts, fill) => { g.beginPath(); pts.forEach(([x, y], i) => i ? g.lineTo(x, y) : g.moveTo(x, y)); g.closePath(); g.fillStyle = fill; g.fill(); };
+    const quad = (X1, X2, Y1, Y2, z1, z2, fill) => poly([P(X1, Y1, z1), P(X2, Y1, z1), P(X2, Y2, z2), P(X1, Y2, z2)], fill);
+    const wall = (X, Y1, Y2, z1, z2, fill) => poly([P(X, Y1, z1), P(X, Y2, z1), P(X, Y2, z2), P(X, Y1, z2)], fill); // an upright face along the line
+    const disc = (x, y, r, fill) => { g.beginPath(); g.arc(x, y, Math.max(0, r), 0, 7); g.fillStyle = fill; g.fill(); };
+    const rr = (x, y, w, h, r, fill) => { g.beginPath(); if (g.roundRect) g.roundRect(x, y, w, h, Math.max(0, Math.min(r, w / 2, h / 2))); else g.rect(x, y, w, h); g.fillStyle = fill; g.fill(); }; // a rounded box
+    const rnd = k => { const x = Math.sin(k * 127.1) * 43758.5453; return x - Math.floor(x); };
+    // colours: #rrggbb → [r, g, b]; mix two of them (t = 0 gives a, 1 gives b)
+    const rgb = c => { const n = parseInt(/^#[0-9a-f]{6}$/i.test(c) ? c.slice(1) : "cfeaff", 16); return [n >> 16, (n >> 8) & 255, n & 255]; };
+    const mix = (a, b, t) => { const A = rgb(a), B = rgb(b); return "#" + A.map((v, i) => Math.round(v + (B[i] - v) * t).toString(16).padStart(2, "0")).join(""); };
+    // the storybook palette (the same pastel walls and roof bands as the station's skyline)
+    const WALLS = ["#fde3d0", "#dcedf8", "#fbeab9", "#e5def6", "#d6f0e1"], ROOFS = ["#f08a6e", "#6fb0de", "#e9b730", "#a48be0", "#63b98d"];
+    const CARS = ["#f27d8a", "#f2c94c", "#4f8fe0", "#ffffff", "#59b38a", "#9a82d8"];
+    let env = "", sky1, sky2, time, weather, night, wet, tone, hazeOf;
+    function readEnv() {
+      const key = scene.dataset.time + scene.dataset.weather;
+      if (key === env) return;
+      env = key;
+      const cs = getComputedStyle(scene);
+      sky1 = cs.getPropertyValue("--sky1").trim() || "#cfeaff"; sky2 = cs.getPropertyValue("--sky2").trim() || "#f6fcff";
+      time = scene.dataset.time; weather = scene.dataset.weather;
+      night = time === "night"; wet = /rain|storm/.test(weather);
+      // every outdoor colour goes through tone(): dark and blue at night, warmer in the evening, greyer in the rain
+      tone = c => night ? mix(c, "#18233f", .62) : time === "evening" ? mix(c, "#ff9a62", .16) : wet ? mix(c, "#8a9bad", .28) : c;
+      hazeOf = (c, z) => mix(tone(c), sky2, Math.min(.7, z / 120)); // far things fade into the sky
+    }
+    // the arch of a tunnel (or tunnel mouth) at depth z
+    function arch(z, more) {
+      const [l, b] = P(-2.6, 0, z), [r] = P(2.6, 0, z), [, w] = P(0, 2.9, z), [, t] = P(0, 4.4, z);
+      if (!more) g.beginPath();
+      g.moveTo(l, b); g.lineTo(l, w); g.quadraticCurveTo(l, t, vx, t); g.quadraticCurveTo(r, t, r, w); g.lineTo(r, b); g.closePath();
+    }
+    function track(z0, bed, sleeper, foot, top) {
+      quad(-1.5, 1.5, 0, 0, NEAR, 400, bed);
+      for (let k = Math.ceil(z0); k < z0 + 60; k++) { // sleepers every 1 unit, moving towards us
+        const z = k - z0 + NEAR; if (z < NEAR) continue;
+        g.globalAlpha = Math.min(1, 3 / z + .2); quad(-1.05, 1.05, .02, .02, z, z + .25, sleeper);
+      }
+      g.globalAlpha = 1;
+      [-.72, .72].forEach(X => { // rails: a soft foot with a bright top
+        const [x1, y1] = P(X, .05, NEAR), [x2, y2] = P(X, .05, 400);
+        g.strokeStyle = foot; g.lineWidth = 4.5; g.beginPath(); g.moveTo(x1, y1); g.lineTo(x2, y2); g.stroke();
+        g.strokeStyle = top; g.lineWidth = 1.8; g.beginPath(); g.moveTo(x1, y1); g.lineTo(x2, y2); g.stroke();
+      });
+    }
+    // someone waiting on the platform ahead: a little storybook figure, standing at (X, Y) and depth z
+    function person(X, Y, z, c) {
+      const [x, y] = P(X, Y, z), u = 1.8 * F / z / 62;
+      g.fillStyle = c[4]; g.fillRect(x - 7 * u, y - 19 * u, 6 * u, 18 * u); g.fillRect(x + u, y - 19 * u, 6 * u, 18 * u);
+      rr(x - 10 * u, y - 40 * u, 20 * u, 24 * u, 6 * u, c[3]);
+      disc(x, y - 51 * u, 10 * u, SKIN[c[0]]);
+      g.fillStyle = c[2]; g.beginPath(); g.arc(x, y - 52 * u, 10.5 * u, Math.PI, 0); g.closePath(); g.fill();
+    }
+    function station(zS, under) { // the next platform, on the left, from zS onwards
+      if (zS > 40) return;
+      const z1 = Math.max(NEAR, zS), z2 = zS + 30, top = under ? 4.1 : 2.5;
+      if (under) poly([P(-7, 0, z2), P(7, 0, z2), P(7, 5, z2), P(-7, 5, z2)], "#fff6dc"); // the lit hall beyond
+      quad(-7, -1.6, 1.1, 1.1, z1, z2, "#e7edf3");                      // platform top
+      wall(-1.6, 0, 1.1, z1, z2, "#c3ced9");                           // its edge
+      quad(-1.95, -1.6, 1.11, 1.11, z1, z2, "#f6cf4f");                 // yellow line
+      quad(-2.02, -1.95, 1.11, 1.11, z1, z2, "#ffffff");
+      quad(-7, 3, 4.6, 4.6, z1, z2, under ? "#fbfaf5" : "#f4f7fa");      // roof / ceiling
+      for (let k = 0; k < 7; k++) { const z = z1 + 1 + k * 4.5; if (z < z2) quad(-7, 3, 4.58, 4.58, z, z + .35, under ? "#fff3c4" : "#dfe6ee"); } // lights / beams
+      for (let k = 5; k >= 0; k--) { // pillars and the people waiting between them, far to near
+        const z = z1 + 2 + k * 5; if (z >= z2) continue;
+        quad(-5.25, -4.95, 1.1, 4.1, z, z, "#e3e9f0"); wall(-4.95, 1.1, 4.1, z, z + .3, "#c9d3dd");
+        if (z - 2.2 > NEAR + 1.5) person(-3.1 - (k % 2) * .9, 1.1, z - 2.2, CAST[(k * 5 + 3) % CAST.length]);
+      }
+      // platform screen doors along the edge: glass panels between posts (half height outside, full height underground)
+      wall(-1.6, 1.1, top, z1, z2, "rgba(219,239,251,.5)");
+      g.strokeStyle = "#bcc7d2";
+      for (let k = 0; k < 13; k++) {
+        const z = z1 + k * 2.5; if (z >= z2) break;
+        const [x, y] = P(-1.6, 1.1, z), [, t] = P(-1.6, top, z);
+        g.lineWidth = Math.max(1, .1 * F / z); g.beginPath(); g.moveTo(x, y); g.lineTo(x, t); g.stroke();
+      }
+      const [ax, ay] = P(-1.6, top, z1), [bx, by] = P(-1.6, top, z2);
+      g.lineWidth = 2; g.beginPath(); g.moveTo(ax, ay); g.lineTo(bx, by); g.stroke();
+      if (zS > 9) poly([P(-7, 4.6, z1), P(3, 4.6, z1), P(3, 4.32, z1), P(-7, 4.32, z1)], lineCol); // a band in the line colour along the roof's edge
+    }
+    function sky() {
+      const sg = g.createLinearGradient(0, 0, 0, hz); sg.addColorStop(0, sky1); sg.addColorStop(1, sky2);
+      g.fillStyle = sg; g.fillRect(0, 0, W, hz + 1);
+      const sx = W * .78;
+      if (night) {
+        for (let k = 0; k < 28; k++) { g.fillStyle = `rgba(255,255,255,${.5 + rnd(k + 5) * .5})`; g.fillRect(rnd(k) * W, rnd(k + 50) * hz * .8, 1.6, 1.6); }
+        if (!wet) { disc(sx, hz * .3, 12, "#f4eec4"); disc(sx + 6, hz * .3 - 3, 11, sky1); } // a crescent moon
+      } else { // a soft sun with a pale halo
+        const sy = hz * (time === "afternoon" ? .26 : .6), col = time === "evening" ? "#ff8a52" : time === "morning" ? "#ffc76a" : "#ffd96a";
+        g.globalAlpha = weather === "sunny" ? .55 : .2; disc(sx, sy, 25, "#fff3c4");
+        g.globalAlpha = weather === "sunny" ? 1 : .35; disc(sx, sy, 15, col);
+        g.globalAlpha = 1;
+      }
+      // fluffy clouds: a few when sunny, a grey blanket in the rain
+      const n = weather === "sunny" ? 3 : weather === "cloudy" ? 7 : 9, drift = performance.now() / 1000 * 2;
+      g.fillStyle = night ? "#55628a" : weather === "sunny" ? "#ffffff" : weather === "cloudy" ? "#f4f7fa" : weather === "rain" ? "#c6ced8" : "#a3adba";
+      for (let k = 0; k < n; k++) {
+        const s = .6 + rnd(k + 20) * .7, x = ((rnd(k + 11) * (W + 160) + drift * (.5 + rnd(k))) % (W + 160)) - 80, y = hz * (.12 + rnd(k + 30) * .5);
+        g.beginPath(); g.ellipse(x, y + 7 * s, 30 * s, 9 * s, 0, 0, 7); g.ellipse(x - 12 * s, y + 2 * s, 14 * s, 10 * s, 0, 0, 7); g.ellipse(x + 9 * s, y - 2 * s, 17 * s, 13 * s, 0, 0, 7); g.fill();
+      }
+    }
+    function outside(z0, zS, zP = 999) {
+      readEnv();
+      sky();
+      // soft green ground, paler towards the horizon
+      const gg = g.createLinearGradient(0, hz, 0, VH); gg.addColorStop(0, hazeOf("#bfe6c3", 80)); gg.addColorStop(1, tone("#aadcb0"));
+      g.fillStyle = gg; g.fillRect(0, hz, W, VH - hz);
+      for (let k = 0; k < 16; k++) { // pale blocks on the horizon
+        const x = rnd(k + 9) * W, w = 12 + rnd(k + 3) * 24, h = 8 + rnd(k + 7) * 32;
+        rr(x, hz - h, w, h + 4, 3, hazeOf("#c3d9ee", 50 + rnd(k) * 30));
+      }
+      g.fillStyle = hazeOf("#8fd3a0", 70); g.fillRect(0, hz - 3, W, 4); // a far line of trees
+      // Like the real MRT outside the city centre, the line runs on a viaduct: the ground, roads, trees and the
+      // feet of the HDB flats are ELEV below the track, and the deck (with low side walls) hides what's under it.
+      const GY = -ELEV;
+      [-9, 9].forEach(X => { // roads alongside, with lane markings rushing past and a few cars
+        quad(X - 1.9, X + 1.9, GY, GY, NEAR, 400, tone("#d5dbe2"));
+        for (let k = Math.ceil(z0 / 4); k < z0 / 4 + 25; k++) { const z = k * 4 - z0; if (z > NEAR) quad(X - .07, X + .07, GY, GY, z, z + 1.6, night ? "#e9e2a8" : "#ffffff"); }
+        const pace = X < 0 ? .45 : 1.6; // the left road goes our way (we overtake); the right road comes towards us
+        for (let k = Math.ceil(z0 * pace / 15); k < z0 * pace / 15 + 7; k++) {
+          const z = k * 15 + rnd(k) * 6 - z0 * pace, cx = X + (X < 0 ? -.85 : .85);
+          if (z < NEAR + 2 || z > zP) continue;
+          quad(cx - .55, cx + .55, GY + .5, GY + .5, z, z + 2.2, hazeOf(CARS[Math.abs(k) % 6], z));
+          quad(cx - .43, cx + .43, GY + .55, GY + .55, z + .55, z + 1.5, hazeOf(NAVY, z));
+          if (night) quad(cx - .5, cx + .5, GY + .1, GY + .1, X < 0 ? z + 2.2 : z - 1.6, X < 0 ? z + 3.8 : z, "rgba(255,240,180,.35)"); // headlights on the road
+        }
+      });
+      if (zP < 400) { // where the line goes underground: a green bank with the tunnel mouth in it, which hides what's beyond
+        quad(-80, 80, GY, 6, zP, zP, hazeOf("#a9dbb0", zP));
+        g.save(); g.beginPath(); g.rect(0, 0, W, VH); arch(zP, true); g.clip("evenodd");
+        quad(-4.2, 4.2, GY, 6.2, zP, zP, tone("#f1eee8")); g.restore(); // the pale wall around the mouth
+        arch(zP); g.fillStyle = "#2f3a55"; g.fill();
+      }
+      // beside the line, drawn far to near: pastel HDB flats and round trees down on the ground
+      const items = [];
+      for (let k = Math.floor(z0 / 12); k < z0 / 12 + 8; k++) items.push(["hdb", k * 12 - z0 + 6, k]);
+      for (let k = Math.floor(z0 / 3); k < z0 / 3 + 22; k++) items.push(["tree", k * 3 - z0 + 1, k]);
+      items.filter(i => i[1] > NEAR + .3 && i[1] < zP).sort((a, b) => b[1] - a[1]).forEach(([kind, z, k]) => {
+        const side = k % 2 ? 1 : -1;
+        if (kind === "hdb") {
+          const X = side * (14 + rnd(k) * 5), w = 6, d = 5, h = 24 + rnd(k + 1) * 14, xin = X - side * w / 2, roof = ROOFS[Math.abs(k) % 5], paint = mix(WALLS[Math.abs(k) % 5], roof, .16);
+          wall(xin, GY, GY + h, z, z + d, hazeOf(mix(paint, NAVY, .16), z)); // the side facing the line, a shade darker
+          const [x1, y1] = P(X - w / 2, GY + h, z), [x2, y2] = P(X + w / 2, GY, z), bw = x2 - x1, bh = y2 - y1;
+          rr(x1, y1, bw, bh + 4, bw * .06, hazeOf(paint, z));
+          g.globalAlpha = .6; g.fillStyle = hazeOf(roof, z); g.fillRect(x1 + bw * (side > 0 ? 0 : .9), y1 + bw * .06, bw * .1, bh); g.globalAlpha = 1; // a stripe of its colour down the side
+          rr(x1 - bw * .04, y1 - bw * .05, bw * 1.08, bw * .13, bw * .06, hazeOf(roof, z)); // roof band
+          const cell = bw * .135, rows = Math.floor((bh - bw * .2) / (cell * 1.75)); // rows of little square windows
+          g.fillStyle = night ? "#ffe9a8" : "#ffffff"; g.globalAlpha = night ? 1 : .78;
+          for (let r = 0; r < rows; r++) for (let c = 0; c < 4; c++) if (!night || rnd(k * 31 + r * 7 + c) > .55) g.fillRect(x1 + bw * (.14 + c * .2), y1 + bw * .16 + r * cell * 1.75, cell, cell);
+          g.globalAlpha = 1;
+        } else {
+          const X = side * (k % 3 ? 4.6 + rnd(k) * 2 : 12 + rnd(k) * 2), [tx, ty] = P(X, GY, z), [, top] = P(X, GY + 4, z), r = 1.7 * F / z;
+          g.fillStyle = hazeOf("#8a6a48", z); g.fillRect(tx - .15 * F / z, top, .3 * F / z, ty - top);
+          disc(tx, top, r, hazeOf("#8fd3a0", z));
+          g.globalAlpha = night ? .08 : .28; disc(tx - r * .3, top - r * .3, r * .5, "#ffffff"); g.globalAlpha = 1; // a soft highlight
+        }
+      });
+      // the viaduct deck, the track on it, its low side walls and the power rail
+      const zEnd = Math.min(400, zP); // the deck and its walls stop at a tunnel mouth
+      quad(-2.8, 2.8, 0, 0, NEAR, zEnd, tone("#ece9e3"));
+      for (let k = Math.ceil(z0 / 6); k < z0 / 6 + 12; k++) { const z = k * 6 - z0; if (z > NEAR && z < zEnd) quad(-2.8, 2.8, .01, .01, z, z + .12, "rgba(58,71,88,.1)"); } // joints in the deck
+      track(z0, tone("#d6d0c6"), tone("#b9ae9f"), tone("#98a2af"), night ? "#cfd8e6" : "#ffffff");
+      quad(-1.36, -1.2, .3, .3, NEAR, zEnd, tone("#f6dd8a")); wall(-1.2, .08, .3, NEAR, zEnd, tone("#dcc26c")); // power rail under its cover
+      [-2.8, 2.8].forEach(X => {
+        wall(X, 0, .6, NEAR, zEnd, tone("#f3f0ea"));
+        quad(X - .12 * Math.sign(X), X + .12 * Math.sign(X), .6, .6, NEAR, zEnd, tone("#ffffff"));
+      });
+      for (let k = Math.ceil(z0 / 5); k < z0 / 5 + 16; k++) { // posts along the walls, so the speed shows
+        const z = k * 5 - z0; if (z < NEAR + .2 || z > zEnd) continue;
+        [-2.8, 2.8].forEach(X => { const [x, y] = P(X, .6, z), [, t] = P(X, 1.3, z); g.strokeStyle = tone("#cfc8bc"); g.lineCap = "round"; g.lineWidth = Math.max(1, .14 * F / z); g.beginPath(); g.moveTo(x, y); g.lineTo(x, t); g.stroke(); g.lineCap = "butt"; });
+      }
+      station(zS, false);
+    }
+    function inside(z0, zS) { // a tunnel in soft indigo, with round warm lamps
+      g.fillStyle = "#2f3a55"; g.fillRect(0, 0, W, VH);
+      const lim = Math.min(60, zS), STEP = 2.5, k0 = Math.floor(z0 / STEP);
+      if (zS < 60) { // light from the station ahead
+        const [gx, gy] = P(0, 2, zS), gl = g.createRadialGradient(gx, gy, 2, gx, gy, 6 * F / zS + 30);
+        gl.addColorStop(0, "rgba(255,244,214,.9)"); gl.addColorStop(1, "rgba(255,244,214,0)"); g.fillStyle = gl; g.fillRect(0, 0, W, VH);
+      }
+      for (let k = k0 + 24; k >= k0; k--) { // the tunnel lining, ring by ring (far to near), lit by the train's headlights
+        const zA = Math.max(NEAR, k * STEP - z0), zB = Math.min(lim, (k + 1) * STEP - z0);
+        if (zB <= zA) continue;
+        const light = .45 + Math.min(1, 5 / (zA + 2)) * .65, base = k % 2 ? [112, 124, 164] : [94, 106, 146];
+        g.fillStyle = `rgb(${base.map(v => Math.round(Math.min(255, v * light))).join(",")})`;
+        g.beginPath(); arch(zA, true); arch(zB, true); g.fill("evenodd");
+      }
+      wall(-1.9, 0, .5, NEAR, lim, "#4a5676"); quad(-2.6, -1.9, .5, .5, NEAR, lim, "#7682a6"); // a walkway along the left wall
+      track(z0, "#46516e", "#727d9d", "#2c3548", "#dfe6f2");
+      for (let k = k0 + 24; k >= k0; k--) { // round lamps on every other ring
+        const z = k * STEP - z0; if (!(k % 2) || z < NEAR + .4 || z > lim) continue;
+        [-2.45, 2.45].forEach(X => {
+          const [x, y] = P(X, 2.5, z), s = F / z;
+          if (z < 22) { const gl = g.createRadialGradient(x, y, 0, x, y, .75 * s); gl.addColorStop(0, "rgba(255,233,176,.45)"); gl.addColorStop(1, "rgba(255,233,176,0)"); g.fillStyle = gl; g.fillRect(x - .75 * s, y - .75 * s, 1.5 * s, 1.5 * s); }
+          disc(x, y, Math.max(1.2, .16 * s), "#ffe9b0");
+        });
+      }
+      const hl = g.createRadialGradient(vx, VH + 10, 10, vx, VH + 10, W * .55); hl.addColorStop(0, "rgba(255,246,220,.22)"); hl.addColorStop(1, "rgba(255,246,220,0)");
+      g.fillStyle = hl; g.fillRect(0, hz, W, VH - hz); // the headlights on the track
+      station(zS, true);
+    }
+    function frameAndDash(v, wet) {
+      if (wet) {
+        g.strokeStyle = "rgba(255,255,255,.6)"; g.lineWidth = 1.2;
+        for (let k = 0; k < 40; k++) { const x = Math.random() * W, y = Math.random() * VH; g.beginPath(); g.moveTo(x, y); g.lineTo(x - 3, y + 9 + v * 8); g.stroke(); }
+        // the windscreen wiper sweeps from side to side
+        const a = Math.sin(performance.now() / 380) * 1.05, len = VH * .78, px = vx, py = VH + 8;
+        const ex = px + Math.sin(a) * len, ey = py - Math.cos(a) * len, mx = px + Math.sin(a) * len * .45, my = py - Math.cos(a) * len * .45;
+        g.lineCap = "round";
+        g.strokeStyle = NAVY; g.lineWidth = 3; g.beginPath(); g.moveTo(px, py); g.lineTo(ex, ey); g.stroke();
+        g.lineWidth = 6; g.beginPath(); g.moveTo(mx, my); g.lineTo(ex, ey); g.stroke();
+        g.lineCap = "butt";
+      }
+      const shade = g.createLinearGradient(0, 8, 0, 40); shade.addColorStop(0, "rgba(58,71,88,.2)"); shade.addColorStop(1, "rgba(58,71,88,0)");
+      g.fillStyle = shade; g.fillRect(12, 8, W - 24, 32); // the sun visor's shade at the top of the glass
+      const opening = () => { if (g.roundRect) g.roundRect(12, 8, W - 24, VH - 12, 22); else g.rect(12, 8, W - 24, VH - 12); };
+      g.fillStyle = "#fbfaf5"; g.beginPath(); g.rect(0, 0, W, VH + 2); opening(); g.fill("evenodd"); // the cream window frame, like the train's body
+      g.strokeStyle = NAVY; g.lineWidth = 3.5; g.beginPath(); opening(); g.stroke();                 // its dark seal, like the carriage window's
+      poly([[34, 10], [84, 10], [42, VH - 6], [16, VH - 6]], "rgba(255,255,255,.12)");              // a reflection on the glass
+      // the dashboard: a display with the next stop, and a speed dial
+      g.fillStyle = "#46556b"; g.fillRect(0, VH, W, DASH);
+      g.fillStyle = lineCol; g.fillRect(0, VH, W, 5);
+      const my = VH + 5 + (DASH - 5) / 2, dialX = W - 34;
+      rr(10, my - 17, dialX - 44, 34, 12, "#2b3647");
+      disc(27, my, 6, "#59d98a");
+      const fs = Math.min(17, W / 22); g.font = `bold ${fs}px "Comic Sans MS", "Chalkboard SE", "Baloo 2", system-ui, sans-serif`; g.textBaseline = "middle";
+      g.fillStyle = "#b9c6d8"; g.fillText("Next stop", 41, my + 1);
+      const nx = 47 + g.measureText("Next stop").width;
+      g.fillStyle = "#fff"; g.fillText(next, nx, my + 1, Math.max(20, dialX - 40 - nx));
+      const R = 19, a0 = Math.PI * .8, a1 = Math.PI * 2.2, an = a0 + (a1 - a0) * Math.max(0, Math.min(1, v));
+      disc(dialX, my, R + 4, "#2b3647");
+      g.lineCap = "round"; g.lineWidth = 4.5;
+      g.strokeStyle = "#5d6c84"; g.beginPath(); g.arc(dialX, my, R - 3, a0, a1); g.stroke();
+      g.strokeStyle = "#ffd96a"; g.beginPath(); g.arc(dialX, my, R - 3, a0, an); g.stroke();
+      g.strokeStyle = "#fff"; g.lineWidth = 2.4; g.beginPath(); g.moveTo(dialX, my); g.lineTo(dialX + Math.cos(an) * (R - 6), my + Math.sin(an) * (R - 6)); g.stroke();
+      g.lineCap = "butt";
+      disc(dialX, my, 2.8, "#fff");
+    }
+    return {
+      draw(q, z0, v) {
+        q = Math.max(0, Math.min(1, q));
+        const zS = (1 - q) * LEN + 2, zP = (.5 - q) * LEN; // the next station; the tunnel mouth (if the line goes in or out)
+        g.setTransform(dpr, 0, 0, dpr, 0, 0);
+        hz = hz0 + (reduceMotion ? 0 : Math.sin(z0 * 1.7) * 1.1 * v);
+        const under = fromUG === toUG ? fromUG : fromUG ? zP > NEAR : zP <= NEAR;
+        const mouth = fromUG !== toUG && zP > NEAR && zP < 70;
+        g.save(); g.beginPath(); g.rect(0, 0, W, VH); g.clip(); // the world stays above the dashboard
+        if (under) inside(z0, zS); else outside(z0, zS, mouth ? zP : 999); // outside, the tunnel mouth is drawn in its place
+        if (under && mouth) { g.save(); arch(zP); g.clip(); outside(z0, 99); g.restore(); } // daylight at the end of the tunnel
+        g.restore();
+        readEnv();
+        frameAndDash(v, wet && !under);
+      },
+    };
+  }
+
+  // The carriage has 10 seats in two rows of 5. Passengers always fill them in order (the first row, then the
+  // second), so the pattern shows "5 and some more" at a glance.
+  function emptySeats() { $("carriage").innerHTML = '<div class="seat"></div>'.repeat(10); }
+  function sit(p) { // the next empty seat
+    const seat = $("carriage").querySelector(".seat:not(.full)");
+    if (seat) { seat.classList.add("full"); seat.appendChild(p); }
+  }
+  function stand(p) { p.parentNode.classList.remove("full"); p.remove(); }
+
+  // Put this question's passengers in the train and on the platform. The ones getting off are the last
+  // ones seated, so the passengers who stay keep a tidy pattern with no gaps.
+  function fillScene(q) {
+    const plat = $("platform");
+    emptySeats(); plat.innerHTML = ""; pack = [];
+    if (q.op === "+") {
+      for (let i = 0; i < q.a; i++) sit(personEl());
+      for (let i = 0; i < q.b; i++) plat.appendChild(personEl("board"));
+    } else {
+      for (let i = 0; i < q.a; i++) sit(personEl(i >= q.a - q.b ? "leaving" : ""));
+      plat.innerHTML = `<span class="note">Platform – mind the gap!</span>`;
+    }
+  }
+
+  // Pull into the station: doors open, passengers get on or off, then ask the question.
+  async function arrive() {
+    const gen = S.gen;
+    S.at += S.dir;
+    S.asked++;
+    const q = S.q, station = S.line.stations[S.at];
+    S.trail.add(station);
+    renderRoute(S.at);
+    setSign("Now at", station);
+    $("train").classList.add("open");
+    sfx.chime();
+    S.tries = 0; S.counted = 0; S.busy = true;
+    if (S.surpriseNow) {
+      await sleep(slow(600));
+      if (gen !== S.gen) return;
+      await surpriseRound(gen);
+      if (gen !== S.gen) return;
+    }
+    const ppl = q.a === 1 ? "is <b>1</b> person" : `are <b>${q.a}</b> people`;
+    const verb = q.b === 1 ? "gets" : "get";
+    $("story").innerHTML = q.op === "+"
+      ? `There ${ppl} on the train.<br><b>${q.b}</b> more ${verb} on at <b>${station}</b>.`
+      : `There ${ppl} on the train.<br><b>${q.b}</b> ${verb} off at <b>${station}</b>.`;
+    $("equation").innerHTML = `${q.a} ${q.op === "+" ? "+" : "−"} ${q.b} = <span class="q">?</span>`;
+    $("answers").innerHTML = "";
+
+    await sleep(slow(700)); // doors finish opening
+    if (gen !== S.gen) return;
+    await say(storyLine());
+    if (gen !== S.gen) return;
+    await movePassengers(q, gen);
+    if (gen !== S.gen) return;
+    await sleep(slow(500));
+    if (gen !== S.gen) return;
+
+    $("story").innerHTML += q.op === "+" ? " How many now?" : " How many are left?";
+    const box = $("answers");
+    q.opts.forEach(v => {
+      const b = document.createElement("button");
+      b.className = "ans"; b.textContent = v;
+      b.onclick = () => answer(v, b);
+      box.appendChild(b);
+    });
+    S.busy = false;
+    // On short screens the buttons can sit below the fold: bring them into view.
+    const r = box.getBoundingClientRect();
+    if (r.bottom > innerHeight) box.scrollIntoView({ block: "end", behavior: reduceMotion ? "auto" : "smooth" });
+    say(askLine());
+  }
+
+  const storyLine = () => {
+    const q = S.q, st = S.line.stations[S.at];
+    return q.op === "+" ? `${q.a} on the train. ${q.b} more get on at ${st}.` : `${q.a} on the train. ${q.b} get off at ${st}.`;
+  };
+  const askLine = () => S.q.op === "+" ? `What is ${S.q.a} plus ${S.q.b}?` : `What is ${S.q.a} take away ${S.q.b}?`;
+  function speakQ() {
+    if (!S.q || S.busy) return;
+    say(`${storyLine()} ${askLine()}`);
+  }
+
+  function answer(v, btn) {
+    if (S.busy) return;
+    const q = S.q;
+    if (v !== q.ans) {
+      S.tries++;
+      btn.classList.add("wrong"); btn.disabled = true;
+      sfx.wrong();
+      $("feedback").className = "feedback bad";
+      $("feedback").textContent = S.tries === 1 ? "Oops! Try again 🙂 Count the people." : `Hint: ${q.op === "+" ? `start at ${q.a}, count up ${q.b}` : `start at ${q.a}, count back ${q.b}`}.`;
+      say(S.tries === 1 ? "Try again!" : $("feedback").textContent);
+      return;
+    }
+    S.busy = true;
+    btn.classList.add("right");
+    if (S.tries === 0) S.stars++;
+    $("starCount").textContent = `⭐ ${S.stars}`;
+    $("equation").innerHTML = `${q.a} ${q.op === "+" ? "+" : "−"} ${q.b} = <span class="q" style="border-color:var(--good);color:var(--good)">${q.ans}</span>`;
+    $("feedback").className = "feedback good";
+    const cheer = pick(CHEERS);
+    $("feedback").textContent = `${cheer} ${q.a} ${q.op === "+" ? "+" : "−"} ${q.b} = ${q.ans} ${S.tries === 0 ? "⭐" : ""}`;
+    sfx.right();
+    sparkle(btn, S.tries === 0);
+    document.querySelectorAll("#scene .pax .n").forEach(n => n.remove()); // clear tap-to-count numbers
+    setTally(`🧑 ${q.ans}`, true);
+    say(`${cheer} ${q.a} ${q.op === "+" ? "plus" : "take away"} ${q.b} is ${q.ans}!`);
+
+    const gen = S.gen;
+    setTimeout(() => {
+      if (gen !== S.gen) return;
+      continueTrip();
+    }, 3200);
+  }
+
+  // A right answer: sparkles burst from the button, and a first-try star flies up to the ⭐ count.
+  function sparkle(from, star) {
+    const count = $("starCount"), a = from.getBoundingClientRect(), cx = a.left + a.width / 2, cy = a.top + a.height / 2;
+    const bump = () => { count.classList.remove("bump"); void count.offsetWidth; count.classList.add("bump"); };
+    if (reduceMotion) { if (star) bump(); return; }
+    const spark = text => { const e = document.createElement("div"); e.className = "spark"; e.textContent = text; e.style.left = cx + "px"; e.style.top = cy + "px"; document.body.appendChild(e); return e; };
+    for (let i = 0; i < 8; i++) {
+      const e = spark(pick(["✨", "⭐", "🌟"])), ang = i / 8 * 2 * Math.PI + Math.random() * .6, d = 55 + Math.random() * 45;
+      e.animate([{ transform: "translate(-50%, -50%) scale(.4)", opacity: 1 },
+        { transform: `translate(calc(-50% + ${Math.cos(ang) * d}px), calc(-50% + ${Math.sin(ang) * d}px)) scale(1.1) rotate(${rand(-90, 90)}deg)`, opacity: 0 }],
+        { duration: 650 + Math.random() * 300, easing: "cubic-bezier(.2,.7,.3,1)" }).onfinish = () => e.remove();
+    }
+    if (!star) return;
+    const b = count.getBoundingClientRect(), e = spark("⭐");
+    e.animate([{ transform: "translate(-50%, -50%) scale(1.7)" },
+      { transform: `translate(calc(-50% + ${b.left + 18 - cx}px), calc(-50% + ${b.top + b.height / 2 - cy}px)) scale(.8)` }],
+      { duration: 700, easing: "cubic-bezier(.5,-.3,.6,1)" }).onfinish = () => { e.remove(); bump(); };
+  }
+
+  // ---- passengers walking on and off ----
+  const slow = ms => reduceMotion ? ms * 0.25 : ms;
+
+  // Where an element sits inside the scene, in px.
+  function rel(el) {
+    const s = $("scene").getBoundingClientRect(), b = el.getBoundingClientRect();
+    return { x: b.left - s.left, y: b.top - s.top, w: b.width, h: b.height };
+  }
+  // The size a whole person is drawn at (it changes with the screen).
+  function paxSize() {
+    const h = parseFloat(getComputedStyle($("scene")).getPropertyValue("--paxh")) || 70;
+    return { w: h * 36 / 70, h };
+  }
+  function nearestDoor(r) {
+    const mid = o => o.x + o.w / 2;
+    return [...document.querySelectorAll("#train .door")].map(rel)
+      .reduce((a, b) => Math.abs(mid(b) - mid(r)) < Math.abs(mid(a) - mid(r)) ? b : a);
+  }
+  function setTally(text, done) {
+    const t = $("tally");
+    t.textContent = text;
+    t.classList.add("show");
+    t.classList.toggle("done", !!done);
+    t.classList.remove("bump"); void t.offsetWidth; t.classList.add("bump");
+  }
+  // Swap a waiting passenger for an invisible copy so nobody else on the platform shifts along.
+  function leaveGap(p) {
+    const gap = p.cloneNode(true);
+    gap.style.visibility = "hidden";
+    p.replaceWith(gap);
+  }
+  // Animate a walking copy of a passenger. Each point is [x, y, scale, opacity, timeFraction], where (x, y) is
+  // the middle of their feet in scene px.
+  function walk(p, points, dur, cls) {
+    const { w, h } = paxSize(), el = document.createElement("div");
+    el.className = "walker" + (cls ? " " + cls : "");
+    Object.assign(el.style, { left: -w / 2 + "px", top: -h + "px", width: w + "px", height: h + "px" });
+    el.innerHTML = bodySVG(p.dataset.face);
+    $("scene").appendChild(el);
+    const anim = el.animate(points.map(([x, y, sc, op, t]) => ({ transform: `translate(${x}px, ${y}px) scale(${sc})`, opacity: op, offset: t })), { duration: dur, fill: "both" });
+    return anim.finished.then(() => el.remove());
+  }
+
+  // Get on: walk along the platform to the nearest door, step up and in, then pop into a seat.
+  function boardOne(p, gen, onIn) {
+    const r = rel(p), d = nearestDoor(r), x0 = r.x + r.w / 2, y0 = r.y + r.h, doorX = d.x + d.w / 2, doorY = d.y + d.h;
+    const walkMs = slow(Math.min(1200, 300 + Math.abs(doorX - x0) * 4)), stepMs = slow(650), dur = walkMs + stepMs, t1 = walkMs / dur;
+    leaveGap(p);
+    return walk(p, [[x0, y0, 1, 1, 0], [doorX, y0, 1, 1, t1], [doorX, doorY + 2, .86, 1, t1 + (1 - t1) * .65], [doorX, doorY - 4, .62, 0, 1]], dur).then(() => {
+      if (gen !== S.gen) return;
+      p.classList.remove("board");
+      p.classList.add("pop");
+      sit(p);
+      onIn();
+    });
+  }
+
+  // Get off: stand up, go to the nearest door, step down onto the platform, then wave and walk away.
+  function alightOne(p, gen, onOut) {
+    const r = rel(p), d = nearestDoor(r), plat = rel($("platform")), W = $("scene").clientWidth, { h } = paxSize();
+    const doorX = d.x + d.w / 2, doorY = d.y + d.h, platY = plat.y + plat.h, exitX = doorX < W / 2 ? -30 : W + 30;
+    const toDoor = slow(500), down = slow(450), away = slow(Math.min(1300, 400 + Math.abs(exitX - doorX) * 3.5)), dur = toDoor + down + away;
+    stand(p); // the seat turns pale again
+    setTimeout(() => gen === S.gen && onOut(), toDoor + down);
+    return walk(p, [
+      [r.x + r.w / 2, r.y + r.h / 2 + h * .25, .5, 1, 0], // in the window, drawn half size
+      [doorX, doorY, .82, 1, toDoor / dur],
+      [doorX, platY, 1, 1, (toDoor + down) / dur],
+      [exitX, platY, 1, 1, 1],
+    ], dur, "bye");
+  }
+
+  // One passenger at a time (slightly overlapping). The bubble counts how many get on/off
+  // (➕ 1, 2, 3), not the total, so the answer isn't given away.
+  async function movePassengers(q, gen) {
+    const sign = q.op === "+" ? "➕" : "➖";
+    let k = 0;
+    setTally(`${sign} 0`);
+    const group = q.op === "+"
+      ? [...$("platform").querySelectorAll(".pax")]
+      : [...$("carriage").querySelectorAll(".pax.leaving")].reverse(); // the last seat empties first
+    const step = () => { k++; setTally(`${sign} ${k}`); sfx.tick(); say(String(k)); };
+    const jobs = [];
+    for (const p of group) {
+      if (gen !== S.gen) return;
+      jobs.push(q.op === "+" ? boardOne(p, gen, step) : alightOne(p, gen, step));
+      await sleep(slow(800));
+    }
+    await Promise.all(jobs);
+  }
+
+  // After a station: finish the trip, ride on, or (at an interchange) ask which train to take.
+  function continueTrip() {
+    S.left--;
+    if (S.left <= 0) return finish();
+    if (bedtime()) return finish(true);
+    const L = S.line, here = L.stations[S.at];
+    const canStay = !!L.stations[S.at + S.dir];
+    const opts = [];
+    STOPS[here].filter(o => o.L !== L).forEach(({ L: M, i }) => {
+      if (M.stations[i + 1]) opts.push({ L: M, i, dir: 1, to: M.stations.at(-1) });
+      if (M.stations[i - 1]) opts.push({ L: M, i, dir: -1, to: M.stations[0] });
+    });
+    if (!opts.length) return canStay ? depart() : finish();
+    showInterchange(here, canStay, opts);
+  }
+
+  // Play time running out: when less than LAST_CALL seconds are left, the train makes 2 more stops
+  // (never stopping mid-question), then goes to sleep. Returns true when it's time to stop now.
+  const LAST_CALL = 60;
+  function bedtime() {
+    if (!playTime.limit()) return false;
+    const pill = $("stopsPill");
+    if (S.lastStops != null) {
+      if (--S.lastStops <= 0) return true;
+      pill.textContent = "🌙 Last stop!"; pill.hidden = false;
+      return false;
+    }
+    if (playTime.left() <= 0 && S.asked > 1) return true;
+    if (playTime.left() <= LAST_CALL) {
+      S.lastStops = 2; S.warnNow = true;
+      pill.textContent = "🌙 2 more stops"; pill.hidden = false;
+    }
+    return false;
+  }
+
+  function showInterchange(here, canStay, opts) {
+    const gen = S.gen, L = S.line, box = $("xOpts");
+    $("xTitle").textContent = `🔀 ${here} is an interchange!`;
+    box.innerHTML = "";
+    let letter = 0;
+    const add = (sign, onPick) => {
+      box.appendChild(platformSign({ ...sign, letter: "ABCDEFGH"[letter++],
+        onPick: () => { if (gen !== S.gen) return; $("xchg").hidden = true; sfx.tick(); onPick(); } }));
+    };
+    if (canStay) add({ L, i: S.at, dir: S.dir, kind: "stay" }, depart);
+    opts.forEach(o => add({ L: o.L, i: o.i, dir: o.dir, kind: "change" }, () => {
+      S.line = o.L; S.at = S.from = o.i; S.dir = o.dir;
+      document.documentElement.style.setProperty("--line", o.L.color);
+      renderRoute(S.at);
+      applyEnv(isUnderground(o.L, here) ? "ug" : "open");
+      say(`All change! Now on the ${o.L.name}.`);
+      depart();
+    }));
+    if (!canStay) add({ kind: "end" }, finish);
+    $("xchg").hidden = false;
+    say(`${here} is an interchange! Which train shall we take?`);
+  }
+
+  // A platform sign button. kind: "dir" (start picker), "stay" or "change" (interchange), or "end".
+  // The strip shows this station and the next stops in the direction of travel.
+  function platformSign({ letter, L, i, dir, kind, onPick }) {
+    const b = document.createElement("button");
+    b.className = "psign" + (kind === "end" ? " end" : "");
+    b.dataset.kind = kind;
+    if (kind === "end") {
+      b.innerHTML = `<span class="top"><span class="plat">🏁</span><span class="txt"><div class="to">This is the last stop</div><div class="dest">End the ride here</div></span></span>`;
+    } else {
+      const st = L.stations, dest = dir > 0 ? st.at(-1) : st[0];
+      const stops = [st[i]];
+      for (let k = 1; k <= 3 && st[i + k * dir]; k++) stops.push(st[i + k * dir]);
+      const verb = kind === "stay" ? "Stay on · " : kind === "change" ? "Change to · " : "";
+      b.dataset.line = L.id; b.dataset.to = dest;
+      b.style.setProperty("--c", L.color);
+      b.innerHTML = `<span class="top"><span class="plat">${letter}</span>
+          <span class="txt"><div class="to">${verb}<span class="lc" style="background:${L.color}">${L.id}</span>${L.name} · towards</div><div class="dest">${dest}</div></span>
+          <span class="arrow" aria-hidden="true">${dir > 0 ? "→" : "←"}</span></span>
+        <span class="strip" aria-hidden="true">${stops.map((_, k) => `<i></i>${k < stops.length - 1 ? "<b></b>" : ""}`).join("")}</span>
+        <span class="names">${stops.map(n => `<span>${n}</span>`).join("")}</span>`;
+      b.setAttribute("aria-label", `Platform ${letter}: ${kind === "stay" ? "stay on" : kind === "change" ? "change to" : ""} the ${L.name} towards ${dest}`);
+    }
+    b.onclick = onPick;
+    return b;
+  }
+
+  // A surprise on arrival: something to spot and count (1 to 5). No timer; just for fun.
+  const SURPRISES = [
+    { e: "🐦", name: "birds", where: "sky" }, { e: "🎈", name: "balloons", where: "sky" },
+    { e: "🦋", name: "butterflies", where: "sky" }, { e: "🐱", name: "cats", where: "platform" },
+  ];
+  function surpriseRound(gen) {
+    const sp = pick(SURPRISES), n = rand(1, 5), scene = $("scene"), items = [];
+    const H = scene.clientHeight;
+    for (let k = 0; k < n; k++) {
+      const d = document.createElement("div");
+      d.className = "sitem"; d.textContent = sp.e;
+      d.style.left = `${6 + k * (82 / n) + rand(0, 6)}%`;
+      d.style.top = sp.where === "sky" ? `${rand(2, 34)}px` : `${H - 52 + rand(-4, 4)}px`;
+      d.style.animationDelay = `${-rand(0, 14) / 10}s`;
+      scene.appendChild(d); items.push(d);
+    }
+    $("story").innerHTML = `👀 Surprise! Look at the ${sp.where}!<br>How many <b>${sp.name}</b> can you see?`;
+    $("equation").innerHTML = ""; $("feedback").textContent = ""; $("feedback").className = "feedback";
+    const opts = new Set([n]);
+    for (const dlt of shuffle([-1, 1, 2, -2])) { if (opts.size >= 3) break; if (n + dlt >= 1 && n + dlt <= 6) opts.add(n + dlt); }
+    const box = $("answers"); box.innerHTML = "";
+    say(`Surprise! How many ${sp.name} can you see?`);
+    return new Promise(resolve => {
+      shuffle([...opts]).forEach(v => {
+        const b = document.createElement("button");
+        b.className = "ans sans"; b.textContent = v;
+        b.onclick = () => {
+          if (gen !== S.gen) return resolve();
+          if (v !== n) {
+            b.classList.add("wrong"); b.disabled = true; sfx.wrong();
+            $("feedback").className = "feedback bad"; $("feedback").textContent = "Count again! 🙂";
+            say("Count again!");
+            return;
+          }
+          S.surprises++;
+          b.classList.add("right"); sfx.right();
+          $("feedback").className = "feedback good"; $("feedback").textContent = `Yes! ${n} ${sp.name}! 🎁`;
+          say(`Yes! ${n} ${sp.name}!`);
+          box.querySelectorAll("button").forEach(x => x.disabled = true);
+          setTimeout(() => items.forEach(d => d.classList.add("away")), 700);
+          setTimeout(() => {
+            items.forEach(d => d.remove()); box.innerHTML = "";
+            $("feedback").textContent = ""; $("feedback").className = "feedback";
+            resolve();
+          }, slow(1800));
+        };
+        box.appendChild(b);
+      });
+    });
+  }
+
+  // ---- the MRT network map (used by the start picker and the in-game map) ----
+  const LAND = "M2 72 C 8 52, 28 32, 48 24 C 60 8, 80 3, 100 7 C 122 10, 150 13, 170 25 C 184 34, 188 48, 184 62 C 178 72, 162 79, 142 86 C 122 93, 102 97, 84 97 C 60 95, 30 87, 10 83 C 3 81, 0 77, 2 72 Z";
+  const svgNS = "http://www.w3.org/2000/svg";
+  function drawMap(svg, o) {
+    svg.innerHTML = "";
+    // with station names (start picker) leave a margin so names near the edges aren't cut off
+    const vb = o.names ? [-6, -4, 206, 116] : [-4, -2, 194, 102];
+    svg.setAttribute("viewBox", vb.join(" "));
+    svg.dataset.vb = vb.join(" ");
+    const add = (tag, attrs, parent = svg) => { const e = document.createElementNS(svgNS, tag); for (const k in attrs) e.setAttribute(k, attrs[k]); parent.appendChild(e); return e; };
+    add("path", { d: LAND, fill: "#f4fbef", stroke: "#d3e7cb", "stroke-width": .5 });
+    LINES.forEach(L => add("polyline", {
+      points: L.stations.map(n => POS[n].join(",")).join(" "), fill: "none", stroke: L.color,
+      "stroke-width": L === o.line ? 2.4 : 1.6, "stroke-linecap": "round", "stroke-linejoin": "round", opacity: !o.dim || L === o.line ? 1 : .25,
+    }));
+    for (const [name, [x, y]] of Object.entries(POS)) {
+      const lines = STOPS[name], inter = lines.length > 1, onLine = lines.some(z => z.L === o.line);
+      const g = add("g", { class: "mst" + (o.pick && onLine ? " pickable" : "") });
+      if (o.pick && onLine) { add("circle", { cx: x, cy: y, r: 2.8, fill: "transparent" }, g); g.addEventListener("click", () => o.pick(name)); }
+      const faded = o.dim && !onLine;
+      if (o.trail?.has(name)) {
+        add("circle", { cx: x, cy: y, r: 2, fill: "#fff", stroke: "rgba(0,0,0,.2)", "stroke-width": .3 }, g);
+        add("circle", { cx: x, cy: y, r: 1.6, fill: (o.line && onLine ? o.line : lines[0].L).color }, g);
+        add("text", { x, y: y + .8, "font-size": 2.2, "text-anchor": "middle", fill: "#fff" }, g).textContent = "★";
+      } else {
+        add("circle", { cx: x, cy: y, r: inter ? 1.6 : 1.1, fill: "#fff", stroke: "#1d2b3a", "stroke-width": inter ? .55 : .35, opacity: faded ? .35 : 1 }, g);
+      }
+    }
+    const label = (name, big) => {
+      const [x, y] = POS[name], right = x < 160;
+      add("text", { x: x + (right ? 2.6 : -2.6), y: y + .8, "font-size": big ? 3.4 : 2.2, "font-weight": "bold", fill: "#1d2b3a",
+        "text-anchor": right ? "start" : "end", stroke: "#fff", "stroke-width": big ? .9 : .6, "paint-order": "stroke" }).textContent = name;
+    };
+    (o.labels || []).forEach(n => n !== o.here && label(n, false));
+    // Every station name along one line (start picker). Each name is set at right angles to the line
+    // (like a real MRT map), so neighbouring names stand side by side instead of running into each other.
+    if (o.names) {
+      const st = o.names.stations;
+      st.forEach((name, i) => {
+        const here = name === o.here;
+        const [x, y] = POS[name], a = POS[st[Math.max(0, i - 1)]], b = POS[st[Math.min(st.length - 1, i + 1)]];
+        let ang = Math.atan2(b[1] - a[1], b[0] - a[0]) * 180 / Math.PI - 90; // perpendicular to the line
+        while (ang > 90) ang -= 180;
+        while (ang <= -90) ang += 180;
+        ang = Math.max(-60, Math.min(60, ang)); // keep names easy to read
+        if (y < 12 && ang < 0) ang = -ang;       // don't run off the top of the map
+        // Alternate sides of the line (1st station one side, 2nd the other…) so neighbours get twice the room,
+        // but flip a name back if it would run off the edge of the map.
+        const r = ang * Math.PI / 180, len = name.length * 1.15 * Math.cos(r);
+        let side = i % 2 ? -1 : 1;
+        if (side < 0 && x - len < -4) side = 1;
+        if (side > 0 && x + len > 198) side = -1;
+        const d = side * (here ? 3.6 : 1.7); // the chosen station's name sits clear of its red ring
+        const tx = x + d * Math.cos(r), ty = y + d * Math.sin(r) + .7;
+        const t = add("text", { x: tx, y: ty, "font-size": here ? 2.5 : 2, "font-weight": "bold", fill: here ? "#d42e12" : "#1d2b3a", stroke: "#fff", "stroke-width": here ? .8 : .6,
+          "paint-order": "stroke", class: "pick-label", "data-name": name, "text-anchor": side > 0 ? "start" : "end", transform: `rotate(${ang.toFixed(1)} ${x} ${y})` });
+        t.textContent = name;
+        if (o.pick) t.addEventListener("click", () => o.pick(name));
+      });
+    }
+    if (o.here) {
+      const [x, y] = POS[o.here];
+      add("circle", { cx: x, cy: y, r: 3, fill: "none", stroke: "#ff4b3e", "stroke-width": .8, class: "here-ring" });
+      add("circle", { cx: x, cy: y, r: 2, fill: "#ff4b3e", stroke: "#fff", "stroke-width": .6 });
+      if (!o.names) add("text", { x, y: y - 3, "font-size": 5, "text-anchor": "middle" }).textContent = "🚆"; // the picker marks it in red instead
+      if (!o.names) label(o.here, true); // the picker already names it, in red, along the line
+    }
+  }
+  // Scroll a map so a station sits in the middle of the view.
+  function centreOn(scroller, svg, name) {
+    requestAnimationFrame(() => {
+      const [x, y] = POS[name], w = svg.clientWidth, h = svg.clientHeight;
+      const [vx, vy, vw, vh] = (svg.dataset.vb || "-4 -2 194 102").split(" ").map(Number);
+      scroller.scrollLeft = (x - vx) / vw * w - scroller.clientWidth / 2;
+      scroller.scrollTop = (y - vy) / vh * h - scroller.clientHeight / 2;
+    });
+  }
+  // ---- above ground or underground, time of day, weather ----
+  // Only these platforms are above ground (elevated or at ground level); every other platform is underground.
+  // Interchanges can differ by line: Bishan is at ground level on the NS line but underground on the Circle Line.
+  const ABOVE = {
+    NS: new Set(LINES[0].stations.slice(0, LINES[0].stations.indexOf("Bishan") + 1)), // Jurong East … Bishan
+    EW: new Set(LINES[1].stations.filter(n => !["Lavender", "Bugis", "City Hall", "Raffles Place", "Tanjong Pagar", "Outram Park", "Tiong Bahru"].includes(n))),
+  };
+  const isUnderground = (L, name) => !ABOVE[L.id]?.has(name);
+  // How often things change (in stations): tweak these to taste.
+  const TIME_EVERY = 6;           // morning → afternoon → evening → night → morning…
+  const WEATHER_EVERY = [3, 5];   // weather is picked again after a random 3 to 5 stations
+  const TIMES = ["morning", "afternoon", "evening", "night"];
+  const WEATHER = [["sunny", 40], ["cloudy", 30], ["rain", 20], ["storm", 10]]; // name, chance in %
+  const TIME_ICON = { morning: "🌅", afternoon: "🌞", evening: "🌇", night: "🌙" };
+  const WEATHER_ICON = { sunny: "", cloudy: "☁️", rain: "🌧️", storm: "⛈️" };
+  const TIME_WORD = { morning: "morning", afternoon: "afternoon", evening: "sunset", night: "night" };
+  const WEATHER_WORD = { sunny: "sunny", cloudy: "cloudy", rain: "rainy", storm: "stormy" };
+  function rollWeather() {
+    let r = Math.random() * 100;
+    for (const [w, pct] of WEATHER) { if ((r -= pct) < 0) return w; }
+    return "sunny";
+  }
+  // With a play-time limit, the sky is the clock: morning when play starts, night when it's nearly time to stop.
+  function skyTime() {
+    const f = 1 - Math.max(0, playTime.left()) / playTime.total();
+    return f < .3 ? "morning" : f < .6 ? "afternoon" : f < .85 ? "evening" : "night";
+  }
+  function clockTime() { // start the ride at the real time of day
+    const h = new Date().getHours();
+    return h < 6 ? "night" : h < 11 ? "morning" : h < 17 ? "afternoon" : h < 19 ? "evening" : "night";
+  }
+  // Show a place (underground "ug" or outside "open") and the current time and weather on the scene.
+  function applyEnv(place) {
+    const sc = $("scene");
+    sc.dataset.place = place; sc.dataset.time = S.time; sc.dataset.weather = S.weather;
+    const pill = $("envPill");
+    if (place === "ug") { pill.textContent = "🚇"; pill.title = "Underground"; }
+    else {
+      pill.textContent = TIME_ICON[S.time] + WEATHER_ICON[S.weather];
+      pill.title = `${WEATHER_WORD[S.weather]} ${TIME_WORD[S.time]}`;
+    }
+  }
+  // Called once per ride between stations: moves time and weather on when their turn comes.
+  function stepEnv() {
+    S.envStops++;
+    if (playTime.limit()) S.time = skyTime();
+    else if (S.envStops % TIME_EVERY === 0) S.time = TIMES[(TIMES.indexOf(S.time) + 1) % TIMES.length];
+    if (--S.weatherLeft <= 0) { S.weather = rollWeather(); S.weatherLeft = rand(...WEATHER_EVERY); }
+  }
+
+  const TERMINI = [...new Set(LINES.flatMap(L => [L.stations[0], L.stations.at(-1)]))];
+  // A few well-known stations spread around the map get labels too (the city centre is too crowded for more).
+  const LANDMARKS = ["Woodlands", "Bishan", "Serangoon", "Paya Lebar", "Tampines", "Buona Vista", "Caldecott", "Botanic Gardens", "City Hall"];
+
+  // In-game map: the whole network, the train where it is now, and stars on this ride's stations.
+  function openMap() {
+    const here = S.line.stations[S.at];
+    $("mapTitle").textContent = `🗺️ ${$("signLbl").textContent === "Next stop" ? "Heading to" : "Now at"} ${$("stationName").textContent}`;
+    drawMap($("bigMap"), { line: S.line, here, trail: S.trail, labels: [...TERMINI, ...LANDMARKS] });
+    $("mapView").hidden = false;
+    centreOn($("mapScroll"), $("bigMap"), here);
+  }
+
+  // Start picker: tap a station (on the list or the map); mid-line stations also pick a direction.
+  function updateStartChip() { $("startPick").textContent = `📍 ${S.line.stations[S.startIdx]}`; }
+  function openPicker() {
+    const L = S.line, st = L.stations;
+    $("pickTitle").textContent = `📍 Tap a station to start on the ${L.name}`;
+    const draw = () => drawMap($("pickMap"), { line: L, dim: true, here: st[S.startIdx], names: L, pick: name => choose(st.indexOf(name)) });
+    function choose(i) {
+      S.startIdx = i; sfx.tick(); say(st[i]);
+      draw(); centreOn($("pickScroll"), $("pickMap"), st[i]);
+      updateStartChip();
+      const row = $("dirRow");
+      if (i === 0 || i === st.length - 1) { S.startDir = i === 0 ? 1 : -1; row.hidden = true; setTimeout(closePicker, 450); return; }
+      row.innerHTML = "";
+      [1, -1].forEach((d, k) => row.appendChild(platformSign({ letter: "AB"[k], L, i, dir: d, kind: "dir",
+        onPick: () => { S.startDir = d; sfx.tick(); closePicker(); } })));
+      row.hidden = false;
+      say(`${st[i]}. Which way shall we go?`);
+    }
+    $("dirRow").hidden = true;
+    draw();
+    $("picker").hidden = false;
+    centreOn($("pickScroll"), $("pickMap"), st[S.startIdx]);
+  }
+  function closePicker() { $("picker").hidden = true; }
+
+  // The end screen's row of stars pops in one at a time.
+  function showEndStars(total) {
+    $("endStars").innerHTML = [..."⭐".repeat(S.stars) + "☆".repeat(total - S.stars)].map((c, i) => `<span style="animation-delay:${Math.min(i * 60, 1500)}ms">${c}</span>`).join("");
+  }
+  function finish(sleepy) {
+    const total = S.asked;
+    const last = S.line.stations[S.at];
+    $("stopsPill").hidden = true;
+    $("againBtn").hidden = $("otherBtn").hidden = !!sleepy;
+    $("nightBtn").hidden = !sleepy;
+    $("end").classList.toggle("sleepy", !!sleepy);
+    $("end").querySelector(".big-emoji").textContent = sleepy ? "🌙" : "🏆";
+    $("endTime").textContent = `⏱️ Played today: ${Math.round(playTime.rec().used / 60)} min`;
+    if (sleepy) { // play time is up: the train goes to the depot to sleep
+      const r = playTime.rec(); r.used = Math.max(r.used, playTime.total()); playTime.save(r); // asleep for the rest of today
+      $("endTitle").textContent = "Time for the train to rest! 😴";
+      $("endText").textContent = `Great riding today! You rode ${total} stop${total > 1 ? "s" : ""} and got ${S.stars} star${S.stars === 1 ? "" : "s"}. The train is going to the depot to sleep. See you tomorrow!`;
+      showEndStars(total);
+      show("end");
+      sfx.chime();
+      say(`Great riding today! You got ${S.stars} stars. The train is going to sleep now. See you tomorrow!`);
+      return;
+    }
+    if (!S.line.stations[S.at + S.dir]) { // reached the end of a line: earn its badge
+      badges[S.line.id] = Math.max(badges[S.line.id] || 0, S.stars);
+      store.set("mrtBadges", badges);
+    }
+    $("endTitle").textContent = `You reached ${last}!`;
+    const found = S.surprises ? ` You found ${S.surprises} surprise${S.surprises > 1 ? "s" : ""}! 🎁` : "";
+    $("endText").textContent = `You rode ${total} stop${total > 1 ? "s" : ""} and got ${S.stars} out of ${total} stars on the first try!${found}`;
+    showEndStars(total);
+    show("end");
+    sfx.chime(); setTimeout(sfx.right, 900);
+    say(`Hooray! You reached ${last}! You got ${S.stars} stars!`);
+    for (let i = 0; i < 30; i++) {
+      const c = document.createElement("div");
+      c.className = "confetti";
+      c.textContent = pick(["🎉","⭐","🎈","🚆","✨"]);
+      c.style.left = rand(0, 95) + "vw";
+      c.style.animationDuration = rand(25, 45) / 10 + "s";
+      c.style.animationDelay = rand(0, 15) / 10 + "s";
+      document.body.appendChild(c);
+      setTimeout(() => c.remove(), 6500);
+    }
+  }
+
+  // ---- wiring ----
+  // Start train + signal: the train pulls in on load and whenever the home screen comes back.
+  // The signal shows red while it moves, amber as it brakes, and green "GO" once it has stopped.
+  // Tapping GO (or the train) on green starts the game; tapping earlier nudges "wait for green".
+  const startTrain = $("goBtn"), signal = $("signal"), startHint = $("startHint");
+  let sigTimer = null, ready = false;
+  // On iPhones and iPads the spoken questions are muted in silent mode (music and sounds still play), and a page
+  // can't tell, so while the signal isn't green the hint says so. iPadOS reports itself as a Mac with touch.
+  const IOS = /iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+  const WAIT_HINT = IOS ? '<span class="tip-long">🔔 Silent mode off!</span><span class="tip-short">🔔 Silent off!</span>' : "Wait for green…";
+  function setSignal(state) {
+    clearTimeout(sigTimer);
+    ready = state === "green";
+    signal.classList.remove("red", "amber", "green", "go");
+    signal.classList.add(state);
+    startHint.classList.toggle("wait", !ready);
+    startHint.innerHTML = ready ? "Tap <b>GO</b> 👉" : WAIT_HINT;
+    if (ready) sfx.ready();
+  }
+  function pullInStartTrain() {
+    swapping = false;
+    startTrain.classList.remove("leaving", "waiting", "swapping");
+    startTrain.style.animation = "none"; void startTrain.offsetWidth; startTrain.style.animation = "";
+    if (reduceMotion) { startTrain.classList.add("waiting"); setSignal("green"); return; }
+    setSignal("red");
+    sigTimer = setTimeout(() => setSignal("amber"), 950); // braking
+  }
+  const paintLine = () => document.documentElement.style.setProperty("--line", S.line.color);
+  let swapping = false;
+  function swapStartTrain() {
+    if (reduceMotion) { paintLine(); return; }
+    if (swapping) return; // the train that pulls in next will use the latest choice
+    swapping = true;
+    setSignal("red");
+    startTrain.classList.remove("waiting");
+    startTrain.classList.add("swapping");
+  }
+  startTrain.addEventListener("animationend", e => {
+    if (e.target !== startTrain) return;
+    if (startTrain.classList.contains("swapping")) {
+      startTrain.classList.remove("swapping");
+      swapping = false;
+      paintLine();
+      pullInStartTrain();
+    } else if (!startTrain.classList.contains("leaving")) {
+      startTrain.classList.add("waiting");
+      setSignal("green");
+    }
+  });
+  function go() {
+    if (startTrain.classList.contains("leaving")) return; // already on its way (double tap)
+    if (playTime.left() <= 0) return showSleep(); // today's play time is used up
+    if (!ready) { // not green yet: a friendly nudge instead of starting
+      signal.classList.remove("nudge"); void signal.offsetWidth; signal.classList.add("nudge");
+      startHint.innerHTML = "Wait for the green light!";
+      return;
+    }
+    ready = false;
+    clearTimeout(sigTimer);
+    signal.classList.add("go");
+    startTrain.classList.remove("waiting");
+    startTrain.classList.add("leaving");
+    sfx.toot();
+    setTimeout(startGame, reduceMotion ? 150 : 1000);
+  }
+  startTrain.onclick = go;
+  // keep room under the choices for the dock, whatever its height on this screen
+  const dock = document.querySelector(".start-dock");
+  const sideDock = matchMedia("(orientation: landscape) and (max-height: 500px)");
+  const fitDock = () => {
+    if (!dock.offsetHeight) return;
+    const home = $("home").style;
+    // bottom dock: leave room below the choices; side dock (phone held sideways): leave room on the right
+    home.paddingBottom = sideDock.matches ? "16px" : dock.offsetHeight + 16 + "px";
+    home.paddingRight = sideDock.matches ? dock.offsetWidth + 16 + "px" : "";
+  };
+  sideDock.addEventListener?.("change", fitDock);
+  if ("ResizeObserver" in window) new ResizeObserver(fitDock).observe(dock); else addEventListener("resize", fitDock);
+  addEventListener("resize", () => { if (S.routeWin && $("game").classList.contains("active") && !S.riding) renderRoute(S.at); });
+  fitDock();
+  $("goSignal").onclick = go;
+  paintLine();
+  pullInStartTrain();
+  $("againBtn").onclick = () => { restoreHome(); startGame(); };
+  $("nightBtn").onclick = () => { restoreHome(); renderLines(); show("home"); showSleep(); };
+
+  // ---- play time: counting, the grown-up check, settings and the sleeping train ----
+  // Only time on the game screen counts, and only while the page is showing. The ⏱️ clock in the
+  // game's top bar counts down every second; the start screen shows the minutes left today.
+  let lastTick = Date.now();
+  const mmss = t => { t = Math.max(0, Math.ceil(t)); return `${Math.floor(t / 60)}:${String(t % 60).padStart(2, "0")}`; };
+  function showClocks() {
+    const on = !!playTime.limit(), left = playTime.left();
+    $("clock").hidden = !on;
+    if (!on) { $("homeClock").textContent = "⏱️ No limit"; return; }
+    $("clock").textContent = `⏱️ ${mmss(left)}`;
+    $("homeClock").textContent = `⏱️ ${Math.max(0, Math.ceil(left / 60))} min`;
+  }
+  setInterval(() => {
+    const now = Date.now(), dt = Math.min(3, (now - lastTick) / 1000);
+    lastTick = now;
+    if (document.visibilityState === "visible" && $("game").classList.contains("active")) playTime.add(dt);
+    showClocks();
+  }, 1000);
+  showClocks();
+  function showSleep() {
+    try { speechSynthesis.cancel(); } catch {}
+    $("sleep").hidden = false;
+  }
+  // A sum a 6-year-old can't do yet, typed on the number keypad, keeps the settings for grown-ups.
+  let gateAns = 0, gateThen = null;
+  function openGate(then) {
+    const a = rand(6, 9), b = rand(6, 9);
+    gateAns = a * b; gateThen = then;
+    $("gateQ").textContent = `What is ${a} × ${b}?`;
+    $("gateIn").value = ""; $("gateMsg").textContent = "";
+    $("gate").hidden = false;
+    $("gateIn").focus();
+  }
+  function checkGate() {
+    if (+$("gateIn").value === gateAns && $("gateIn").value !== "") { $("gate").hidden = true; gateThen && gateThen(); return; }
+    $("gateMsg").textContent = "Not quite. Please ask a grown-up 🙂";
+    const a = rand(6, 9), b = rand(6, 9);
+    gateAns = a * b; $("gateQ").textContent = `What is ${a} × ${b}?`; $("gateIn").value = "";
+  }
+  $("gateOk").onclick = checkGate;
+  $("gateIn").addEventListener("keydown", e => { if (e.key === "Enter") checkGate(); });
+  $("gateClose").onclick = () => { $("gate").hidden = true; };
+  function openParent() {
+    const lim = playTime.limit(), r = playTime.rec(), used = Math.round(r.used / 60);
+    $("limitList").querySelectorAll("[data-min]").forEach(b => b.classList.toggle("sel", +b.dataset.min === lim));
+    $("pToday").textContent = lim
+      ? `Played today: ${used} min of ${lim + r.extra} min (${Math.max(0, Math.ceil(playTime.left() / 60))} min left)`
+      : `Played today: ${used} min`;
+    $("plusBtn").hidden = $("resetBtn").hidden = !lim;
+    $("parent").hidden = false;
+    showClocks();
+  }
+  $("limitList").addEventListener("click", e => {
+    const b = e.target.closest("[data-min]");
+    if (b) { playTime.setLimit(+b.dataset.min); openParent(); }
+  });
+  $("plusBtn").onclick = () => { const r = playTime.rec(); r.extra += 5; playTime.save(r); openParent(); };
+  $("resetBtn").onclick = () => { playTime.save({ day: dayKey(), used: 0, extra: 0 }); openParent(); };
+  $("parentClose").onclick = () => {
+    $("parent").hidden = true;
+    if (playTime.left() > 0 && !$("sleep").hidden) { $("sleep").hidden = true; pullInStartTrain(); } // more time: wake the train
+  };
+  $("homeClock").onclick = () => openGate(openParent);
+  $("sleepParent").onclick = () => openGate(openParent);
+  if (playTime.left() <= 0) showSleep(); // reopened after today's time ran out
+  $("otherBtn").onclick = () => { restoreHome(); renderLines(); show("home"); pullInStartTrain(); };
+  $("homeBtn").onclick = () => { S.gen++; try { speechSynthesis.cancel(); } catch {} restoreHome(); renderLines(); show("home"); pullInStartTrain(); };
+  $("sayBtn").onclick = speakQ;
+  $("startPick").onclick = openPicker;
+  $("pickClose").onclick = closePicker;
+  $("mapBtn").onclick = openMap;
+  $("mapClose").onclick = () => { $("mapView").hidden = true; };
+  // tapping the dark backdrop closes the picker or the map (not the interchange question)
+  ["picker", "mapView"].forEach(id => $(id).addEventListener("click", e => { if (e.target.id === id) $(id).hidden = true; }));
+  updateStartChip();
+  // Browsers only allow sound after the first tap, so start the music then.
+  // Phones only allow sound after a real tap, so unlock everything on the first few taps.
+  const UNLOCK_EVENTS = ["pointerup", "touchend", "click", "keydown"];
+  UNLOCK_EVENTS.forEach(ev => document.addEventListener(ev, unlockAudio, true));
+  // Coming back to the game (after switching apps or unlocking the phone): wake the sound up again.
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState !== "visible" || !ac) return;
+    if (ac.state !== "running") ac.resume().catch(() => {});
+    if (silentEl?.paused) silentEl.play().catch(() => {});
+    try { speechSynthesis.resume(); } catch {} // iOS can leave speech stuck after an interruption
+  });
+  // One switch for everything: music, the voice and sound effects.
+  function syncSoundBtn() { $("soundBtn").textContent = soundOn ? "🔊" : "🔇"; $("soundBtn").classList.toggle("off", !soundOn); }
+  syncSoundBtn();
+  $("soundBtn").onclick = () => {
+    soundOn = !soundOn; store.set("mrtSound", soundOn);
+    syncSoundBtn();
+    if (soundOn) music.start();
+    else { music.stop(); try { speechSynthesis.cancel(); } catch {} }
+  };
+
+  renderLines();
+})();
+</script>
+</body>
+</html>
